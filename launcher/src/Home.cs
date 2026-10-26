@@ -62,10 +62,10 @@ public sealed class QuietHome : NUIApplication
  double brightnessMin,brightnessMax=50,brightnessStep=1;
  string lastKey="";
  long lastKeyAt;
- readonly Color ink=new Color(0.114f,0.114f,0.122f,1);
- readonly Color muted=new Color(0.431f,0.431f,0.451f,1);
+ readonly Color ink=new Color(0.94f,0.94f,0.96f,1);
+ readonly Color muted=new Color(0.62f,0.63f,0.67f,1);
  readonly Color white=new Color(1,1,1,1);
- readonly Color accent=new Color(0.24f,0.29f,0.72f,1);
+ readonly Color accent=new Color(0.36f,0.43f,0.96f,1);
  [DllImport("libsource-api.so")] static extern int connect_source(int sourceType);
  [DllImport("libsource-api.so")] static extern IntPtr get_source_list();
  [DllImport("libc.so.6")] static extern void free(IntPtr p);
@@ -92,7 +92,7 @@ public sealed class QuietHome : NUIApplication
   base.OnCreate();
   try{fontLoaded=FontClient.Instance.AddCustomFontDirectory(Root+"fonts");}catch{fontLoaded=false;}
   try{curated=AppLibrary.Load(Root+"apps.json");library=new List<LibraryApp>(curated);}catch(Exception ex){libraryError=ex.Message;}
-  Window.Default.BackgroundColor=new Color(0.96f,0.96f,0.97f,1);
+  Window.Default.BackgroundColor=new Color(0.06f,0.065f,0.08f,1);
   Window.Default.Title="Quiet Home";Window.Default.KeyEvent+=OnKey;
   try{dockIds=HomeDock.Parse(File.ReadAllText(DockFile));}catch{dockIds=null;}
   PreloadArtwork();QueryInstalled();
@@ -166,7 +166,7 @@ public sealed class QuietHome : NUIApplication
   for(int i=0;i<count;i++)
   {
    var app=library[start+i];int x=80+(i%5)*358,y=266+(i/5)*245,w=328,h=184;
-   var shadow=Panel(x-5,y+7,w+10,h+8,new Color(.12f,.15f,.25f,.08f),22);
+   var shadow=Panel(x-5,y+7,w+10,h+8,new Color(0,0,0,.3f),22);
    var card=Panel(x+w/2,y+h/2,w,h,HexColor(app.Background),18);
    card.PivotPoint=new Position(.5f,.5f,.5f);card.PositionUsesPivotPoint=true;
    AddAppArtwork(card,app,w,h);
@@ -357,12 +357,12 @@ public sealed class QuietHome : NUIApplication
  {
   if(focusAnimation!=null){focusAnimation.Stop();focusAnimation.Dispose();focusAnimation=null;}
   if(animate)focusAnimation=new Animation(180);
-  for(int i=0;i<3;i++){tabs[i].TextColor=i==page?ink:muted;tabs[i].FontFamily="Quiet Inter "+(i==page?"Semibold":"Medium");tabs[i].BackgroundColor=area==0&&i==page?new Color(1,1,1,.7f):new Color(0,0,0,0);tabs[i].CornerRadius=new Vector4(34,34,34,34);}
+  for(int i=0;i<3;i++){tabs[i].TextColor=i==page?ink:muted;tabs[i].FontFamily="Quiet Inter "+(i==page?"Semibold":"Medium");tabs[i].BackgroundColor=area==0&&i==page?new Color(1,1,1,.14f):new Color(0,0,0,0);tabs[i].CornerRadius=new Vector4(34,34,34,34);}
   for(int i=0;i<slots.Count;i++){
    var s=slots[i];bool f=area!=0&&selected==i;
    float scale=f?(page==1&&s.Row>=0?1.055f:page==2&&s.Row>=0?1.035f:s.Row==0?1.05f:s.Row==1?1.20f:1.10f):1;
    s.Card.BorderlineWidth=page==1&&s.Row>=0?(f?4:1):s.Row==0?1:0;
-   s.Card.BorderlineColor=page==1&&f?accent:new Color(1,1,1,f?.8f:.28f);
+   s.Card.BorderlineColor=page==1&&f?accent:new Color(1,1,1,f?.8f:.12f);
    var pos=new Position(s.X+s.W/2f,s.Y+s.H/2f-(f&&(s.Row==0||page==1&&s.Row>=0)?5:0),0);
    if(animate){focusAnimation.AnimateTo(s.Card,"Scale",new Vector3(scale,scale,1));focusAnimation.AnimateTo(s.Card,"Position",pos);}else{s.Card.Scale=new Vector3(scale,scale,1);s.Card.Position=pos;}
    if(s.Shadow!=null)s.Shadow.Opacity=f?1:.55f;
@@ -469,7 +469,7 @@ public sealed class QuietHome : NUIApplication
   ClearOverlay();menuOptions=options;menuIndex=0;menuApp=app;
   int w=680,rowH=78,top=message==null?118:190,h=top+options.Count*rowH+30,x=(1920-w)/2,y=(1080-h)/2;
   Overlay(new View{Size2D=new Size2D(1920,1080),BackgroundColor=new Color(0,0,0,.45f)});
-  var panel=Overlay(new View{Position2D=new Position2D(x,y),Size2D=new Size2D(w,h),BackgroundColor=new Color(.98f,.98f,.99f,1),CornerRadius=new Vector4(28,28,28,28)});
+  var panel=Overlay(new View{Position2D=new Position2D(x,y),Size2D=new Size2D(w,h),BackgroundColor=new Color(.13f,.14f,.17f,1),CornerRadius=new Vector4(28,28,28,28)});
   panel.Add(Label(title,40,34,w-80,56,36,ink,"Semibold"));
   if(message!=null){var m=Label(message,40,100,w-80,76,24,muted);m.MultiLine=true;panel.Add(m);}
   for(int i=0;i<options.Count;i++){

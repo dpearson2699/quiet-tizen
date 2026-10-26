@@ -5,7 +5,7 @@
     "Asset": "placeholders/card-0.svg",
     "Description": "Movies & series",
     "Fit": "cover",
-    "Background": "#FFFFFF",
+    "Background": "#000000",
     "Width": 640,
     "Height": 360
   },
@@ -115,7 +115,7 @@
     "Asset": "glass-button.svg",
     "Description": "Open Samsung Apps",
     "Fit": "cover",
-    "Background": "#EEF0F8",
+    "Background": "#2A2D36",
     "Width": 100,
     "Height": 112,
     "Utility": true
