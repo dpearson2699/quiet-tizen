@@ -19,7 +19,10 @@ public sealed class QuietHome : NUIApplication
  readonly Dictionary<string,CachedArtwork> artworkCache=new Dictionary<string,CachedArtwork>();
  View artworkPreloadRoot;
  int artworkViewsCreated,pageArtworkCold;
- List<LibraryApp> library=new List<LibraryApp>();
+ List<LibraryApp> curated=new List<LibraryApp>(),library=new List<LibraryApp>();
+ System.Threading.Tasks.Task<IEnumerable<ApplicationInfo>> installedQuery;
+ Tizen.NUI.Timer installedPoll;
+ string librarySource="catalog";
  int libraryPage;
  string libraryError="";
  TextLabel clock, notice, detail;
@@ -68,15 +71,15 @@ public sealed class QuietHome : NUIApplication
  {
   base.OnCreate();
   try{fontLoaded=FontClient.Instance.AddCustomFontDirectory(Root+"fonts");}catch{fontLoaded=false;}
-  try{library=AppLibrary.Load(Root+"apps.json");}catch(Exception ex){libraryError=ex.Message;}
+  try{curated=AppLibrary.Load(Root+"apps.json");library=new List<LibraryApp>(curated);}catch(Exception ex){libraryError=ex.Message;}
   Window.Default.BackgroundColor=new Color(0.96f,0.96f,0.97f,1);
   Window.Default.Title="Quiet Home";Window.Default.KeyEvent+=OnKey;
-  PreloadArtwork();
+  PreloadArtwork();QueryInstalled();
   RefreshSource();selected=SourceIndex();BuildPage();
   clockTimer=new Tizen.NUI.Timer(30000);
   clockTimer.Tick+=(s,e)=>{if(clock!=null)clock.Text=DateTime.Now.ToString("h:mm tt");return true;};clockTimer.Start();WriteState("created");
  }
- protected override void OnResume(){base.OnResume();clockTimer?.Start();RefreshSource();if(tabs!=null&&page==2){RefreshSettings();UpdateFocus(false);}WriteState("resumed");}
+ protected override void OnResume(){base.OnResume();clockTimer?.Start();RefreshSource();QueryInstalled();if(tabs!=null&&page==2){RefreshSettings();UpdateFocus(false);}WriteState("resumed");}
  protected override void OnAppControlReceived(AppControlReceivedEventArgs e){base.OnAppControlReceived(e);string requested; if(e.ReceivedAppControl.ExtraData.TryGet("quiet_page",out requested)&&requested=="settings")OpenSettings("settings_request");else if(requested=="apps"){page=1;area=1;selected=0;BuildPage();}else Home("home_request");}
  protected override void OnPause(){base.OnPause();editing="";clockTimer?.Stop();WriteState("paused");}
  void Home(string activity){clockTimer?.Start();RefreshSource();if(tabs!=null){bool unchanged=page==0&&area==1&&editing==""&&selected==SourceIndex();page=0;area=1;editing="";selected=SourceIndex();if(!unchanged)BuildPage();WriteState(activity);}}
@@ -121,10 +124,9 @@ public sealed class QuietHome : NUIApplication
   }
   if(page==0){
   Add(new ImageView{ResourceUrl=Root+"glass-shelf.svg",Position2D=new Position2D(0,784),Size2D=new Size2D(1920,280)});
-  Dock("Netflix","app:org.tizen.netflix-app","netflix",0);
-  Dock("YouTube","app:com.samsung.tv.cobalt-yt","youtube",1);
-  Dock("Prime Video","app:org.tizen.primevideo","prime",2);
-  Dock("Your Apps","page:1","apps",3);
+  var docked=DockApps();
+  for(int i=0;i<docked.Count;i++)Dock(docked[i].Name,"app:"+docked[i].Id,"apps",i);
+  Dock("Your Apps","page:1","apps",docked.Count);
   }
   Toolbar("Apps","page:1","apps",0);Toolbar("Inputs","page:0","hdmi",1);Toolbar("Settings","page:2","settings",2);
   toolbarHint=Text("",1530,170,310,45,24,ink);toolbarHint.HorizontalAlignment=HorizontalAlignment.End;
@@ -164,7 +166,8 @@ public sealed class QuietHome : NUIApplication
  }
  void AddAppArtwork(View card,LibraryApp app,int w,int h)
  {
-  if(!app.Utility){
+  if(app.Fit=="name")card.Add(new TextLabel{Text=app.Name,Size2D=new Size2D(w,h),PixelSize=h/5f,FontFamily="Quiet Inter Semibold",TextColor=white,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,MultiLine=true});
+  else if(!app.Utility){
    var cached=GetArtwork(app,w,h);
    if(cached.Image.LoadingStatus!=ImageView.LoadingStatusType.Ready)pageArtworkCold++;
    cached.Parent.Remove(cached.Image);card.Add(cached.Image);cached.Parent=card;
@@ -180,17 +183,39 @@ public sealed class QuietHome : NUIApplication
   // destroys their decoded textures. The zero-opacity parent is never drawn.
   artworkPreloadRoot=new View{Size2D=new Size2D(1920,1080),Opacity=0};
   Window.Default.Add(artworkPreloadRoot);
-  foreach(var app in library)if(!app.Utility)GetArtwork(app,328,184);
-  foreach(var id in new[]{"org.tizen.netflix-app","com.samsung.tv.cobalt-yt","org.tizen.primevideo"}){
-   var app=library.Find(a=>a.Id==id);if(app!=null)GetArtwork(app,253,126);
-  }
+  foreach(var app in library)if(AppLibrary.HasImage(app))GetArtwork(app,328,184);
+  foreach(var app in DockApps())if(AppLibrary.HasImage(app))GetArtwork(app,253,126);
+ }
+ List<LibraryApp> DockApps(){var apps=library.FindAll(a=>!a.Utility);return apps.GetRange(0,Math.Min(3,apps.Count));}
+ // The installed-app query is asynchronous; a main-loop timer applies its result
+ // so every scene change stays on the UI thread.
+ void QueryInstalled()
+ {
+  if(installedQuery!=null&&!installedQuery.IsCompleted)return;
+  try{installedQuery=ApplicationManager.GetInstalledApplicationsAsync();}catch(Exception ex){librarySource="catalog:"+ex.GetType().Name;return;}
+  installedPoll?.Stop();
+  installedPoll=new Tizen.NUI.Timer(100);
+  installedPoll.Tick+=(s,e)=>{if(!installedQuery.IsCompleted)return true;ApplyInstalled();return false;};
+  installedPoll.Start();
+ }
+ void ApplyInstalled()
+ {
+  var tv=new List<InstalledApp>();
+  try{foreach(var a in installedQuery.Result)tv.Add(new InstalledApp{Id=a.ApplicationId,Label=a.Label,IconPath=a.IconPath,Type=a.ApplicationType,NoDisplay=a.IsNoDisplay});}
+  catch(Exception ex){librarySource="catalog:"+ex.GetBaseException().GetType().Name;WriteState("library_failed");return;}
+  var merged=AppLibrary.Merge(curated,tv);
+  bool changed=merged.Count!=library.Count||!merged.TrueForAll(a=>library.Exists(b=>b.Id==a.Id&&b.Asset==a.Asset));
+  library=merged;librarySource="installed:"+tv.Count;
+  if(changed){foreach(var app in library)if(AppLibrary.HasImage(app))GetArtwork(app,328,184);foreach(var app in DockApps())if(AppLibrary.HasImage(app))GetArtwork(app,253,126);
+   if(editing==""&&(page==0||page==1))BuildPage();}
+  WriteState("library_ready");
  }
  CachedArtwork GetArtwork(LibraryApp app,int w,int h)
  {
   string key=app.Id+"@"+w+"x"+h;
   if(artworkCache.TryGetValue(key,out var cached))return cached;
-  bool cover=app.Fit=="cover",full=cover||app.Fit=="contain-full";
-  int iw=full?w:w-54,ih=full?h:h-40;var crop=app.Crop;
+  bool cover=app.Fit=="cover",full=cover||app.Fit=="contain-full",icon=app.Fit=="icon";
+  int iw=full?w:icon?h*3/5:w-54,ih=full?h:icon?h*3/5:h-40;var crop=app.Crop;
   float cropWidth=crop==null?1:crop[2],cropHeight=crop==null?1:crop[3];
   var image=new ImageView{
    Position2D=new Position2D((w-iw)/2,(h-ih)/2),Size2D=new Size2D(iw,ih),
@@ -202,7 +227,7 @@ public sealed class QuietHome : NUIApplication
   cached=new CachedArtwork{Image=image,Parent=artworkPreloadRoot};
   artworkCache.Add(key,cached);artworkViewsCreated++;
   image.ResourceReady+=(s,e)=>WriteState("artwork_ready");
-  artworkPreloadRoot.Add(image);image.ResourceUrl=Root+app.Asset;
+  artworkPreloadRoot.Add(image);image.ResourceUrl=System.IO.Path.IsPathRooted(app.Asset)?app.Asset:Root+app.Asset;
   return cached;
  }
  void ParkArtwork()
@@ -406,6 +431,6 @@ public sealed class QuietHome : NUIApplication
    if(r==0)r=app_control_send_launch_request(c,IntPtr.Zero,IntPtr.Zero);WriteState("launch:"+id+(menuItem==null?"":":"+menuItem)+":"+r);if(r!=0)ShowError("Could not open this screen. Try Advanced settings.");}finally{app_control_destroy(c);}
  }
  void ShowError(string text){notice.Text=text;}
- void WriteState(string activity){try{File.WriteAllText(StateFile,DateTime.UtcNow.ToString("o")+"\npage="+page+"\nselected="+selected+"\narea="+area+"\nactivity="+activity+"\nkey="+lastKey+"\nfont_loaded="+fontLoaded+"\nstyle=free-my-tv\nbuild_ms="+buildMilliseconds+"\nlibrary_page="+libraryPage+"\nlibrary_count="+library.Count+"\nlibrary_error="+libraryError+"\nselected_name="+(selected>=0&&selected<slots.Count?slots[selected].Name:"")+"\nartwork_cached="+artworkCache.Count+"\nartwork_ready="+ArtworkReadyCount()+"\nartwork_pending="+ArtworkPending()+"\nartwork_views_created="+artworkViewsCreated+"\npage_artwork_cold="+pageArtworkCold+"\nprocess_id="+Process.GetCurrentProcess().Id+"\nediting="+editing+"\nvolume="+currentVolume+"\nmute="+currentMute+"\nbrightness="+SettingValue("brightness")+"\ngame-mode="+SettingValue("game-mode")+"\nsleeptimer="+SettingValue("sleeptimer")+"\n");}catch{}}
+ void WriteState(string activity){try{File.WriteAllText(StateFile,DateTime.UtcNow.ToString("o")+"\npage="+page+"\nselected="+selected+"\narea="+area+"\nactivity="+activity+"\nkey="+lastKey+"\nfont_loaded="+fontLoaded+"\nstyle=free-my-tv\nbuild_ms="+buildMilliseconds+"\nlibrary_page="+libraryPage+"\nlibrary_count="+library.Count+"\nlibrary_error="+libraryError+"\nlibrary_source="+librarySource+"\nselected_name="+(selected>=0&&selected<slots.Count?slots[selected].Name:"")+"\nartwork_cached="+artworkCache.Count+"\nartwork_ready="+ArtworkReadyCount()+"\nartwork_pending="+ArtworkPending()+"\nartwork_views_created="+artworkViewsCreated+"\npage_artwork_cold="+pageArtworkCold+"\nprocess_id="+Process.GetCurrentProcess().Id+"\nediting="+editing+"\nvolume="+currentVolume+"\nmute="+currentMute+"\nbrightness="+SettingValue("brightness")+"\ngame-mode="+SettingValue("game-mode")+"\nsleeptimer="+SettingValue("sleeptimer")+"\n");}catch{}}
  public static void Main(string[] args){using(var app=new QuietHome())app.Run(args);}
 }
