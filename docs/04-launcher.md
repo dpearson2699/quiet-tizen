@@ -252,7 +252,8 @@ cache. Image loading is asynchronous, so a first launch still needs loading
 time; subsequent page visits avoid recreating image views.
 
 The clock updates every 30 seconds and stops while the launcher is paused.
-There is no always-running controller-poll loop. The 180 ms repeat filter
-applies inside Quiet Home only; changing it cannot fix input lag inside Netflix.
+There is no always-running controller-poll loop. Quiet Home acts on every
+remote press; an earlier 180 ms filter on repeated keys dropped every other
+press when tapping quickly, so fast taps scrolled slower than steady ones.
 Local diagnostic files retain only current launcher state and are overwritten;
 the launcher has no telemetry/network client.
