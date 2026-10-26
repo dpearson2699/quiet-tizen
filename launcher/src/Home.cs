@@ -178,8 +178,11 @@ public sealed class QuietHome : NUIApplication
  {var card=Panel(x+w/2,y+h/2,w,h,color,radius);card.PivotPoint=new Position(.5f,.5f,.5f);card.PositionUsesPivotPoint=true;return card;}
  TextLabel Text(string text,int x,int y,int w,int h,float size,Color color,string face="Medium")
  {return (TextLabel)Add(Label(text,x,y,w,h,size,color,face));}
+ // A box shorter than one Geist line (1.35 em, from its Windows metrics) shows only "…",
+ // so it grows about its centre to fit.
  TextLabel Label(string text,int x,int y,int w,int h,float size,Color color,string face="Medium")
- {return new TextLabel{Text=text,Position2D=new Position2D(x,y),Size2D=new Size2D(w,h),PixelSize=size,FontFamily="Quiet Geist "+face,TextColor=color,VerticalAlignment=VerticalAlignment.Center};}
+ {int line=(int)Math.Ceiling(size*1.35f);if(h<line){y-=(line-h+1)/2;h=line;}
+  return new TextLabel{Text=text,Position2D=new Position2D(x,y),Size2D=new Size2D(w,h),PixelSize=size,FontFamily="Quiet Geist "+face,TextColor=color,VerticalAlignment=VerticalAlignment.Center};}
  void BuildPage()
  {
   var stopwatch=Stopwatch.StartNew();
