@@ -166,17 +166,19 @@ public sealed class QuietHome : NUIApplication
  }
  void AddAppArtwork(View card,LibraryApp app,int w,int h)
  {
-  if(app.Fit=="name")card.Add(new TextLabel{Text=app.Name,Size2D=new Size2D(w,h),PixelSize=h/5f,FontFamily="Quiet Inter Semibold",TextColor=white,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,MultiLine=true});
+  if(app.Fit=="name")card.Add(NameLabel(app.Name,w,h));
   else if(!app.Utility){
    var cached=GetArtwork(app,w,h);
    if(cached.Image.LoadingStatus!=ImageView.LoadingStatusType.Ready)pageArtworkCold++;
    cached.Parent.Remove(cached.Image);card.Add(cached.Image);cached.Parent=card;
+   if(cached.Image.LoadingStatus==ImageView.LoadingStatusType.Failed)card.Add(NameLabel(app.Name,w,h));
   }
   if(app.Utility){
    card.Add(new View{Position2D=new Position2D(w/2-28,h/2-2),Size2D=new Size2D(56,4),BackgroundColor=ink});
    card.Add(new View{Position2D=new Position2D(w/2-2,h/2-28),Size2D=new Size2D(4,56),BackgroundColor=ink});
   }
  }
+ TextLabel NameLabel(string name,int w,int h)=>new TextLabel{Text=name,Size2D=new Size2D(w,h),PixelSize=h/5f,FontFamily="Quiet Inter Semibold",TextColor=white,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,MultiLine=true};
  void PreloadArtwork()
  {
   // Keep the real image views alive on the scene; moving between pages never
@@ -226,7 +228,9 @@ public sealed class QuietHome : NUIApplication
   if(crop!=null)image.PixelArea=new RelativeVector4(crop[0],crop[1],crop[2],crop[3]);
   cached=new CachedArtwork{Image=image,Parent=artworkPreloadRoot};
   artworkCache.Add(key,cached);artworkViewsCreated++;
-  image.ResourceReady+=(s,e)=>WriteState("artwork_ready");
+  image.ResourceReady+=(s,e)=>{
+   if(image.LoadingStatus==ImageView.LoadingStatusType.Failed&&cached.Parent!=artworkPreloadRoot)cached.Parent.Add(NameLabel(app.Name,w,h));
+   WriteState("artwork_ready");};
   artworkPreloadRoot.Add(image);image.ResourceUrl=System.IO.Path.IsPathRooted(app.Asset)?app.Asset:Root+app.Asset;
   return cached;
  }
