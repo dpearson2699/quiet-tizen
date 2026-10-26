@@ -85,7 +85,6 @@ public sealed class QuietHome : NUIApplication
  View aboutControl;
  ImageView[] chevrons;
  string lastKey="";
- long lastKeyAt;
  readonly Color ink=new Color(0.94f,0.94f,0.96f,1);
  readonly Color muted=new Color(0.62f,0.63f,0.67f,1);
  readonly Color white=new Color(1,1,1,1);
@@ -618,7 +617,7 @@ public sealed class QuietHome : NUIApplication
   if(e.Key==null)return;string k=e.Key.KeyPressedName;bool select=k=="Return"||k=="KP_Enter";
   if(select&&e.Key.State==Key.StateType.Up){ReleaseSelect();return;}
   if(e.Key.State!=Key.StateType.Down||select&&selectHeld)return;
-  long now=Environment.TickCount64;if(k==lastKey&&now-lastKeyAt<180)return;lastKey=k;lastKeyAt=now;
+  lastKey=k;
   try{
    if(k=="XF86Home"){if(menuOptions!=null)CloseMenu();if(moving!=null)EndMove(false);Home("home_key");return;}
    if(menuOptions!=null){MenuKey(k);return;}
