@@ -14,7 +14,10 @@ public sealed class QuietHome : NUIApplication
  const string Root="/opt/usr/apps/com.samsung.tv.bixby-promotion/res/quiet-home/";
  const string StateFile="/tmp/quiet-home-state.txt";
  // App tiles match Samsung's home: one rounded square size on the dock and in Your Apps.
- const int Tile=120,TileRadius=26,DockPitch=152,GridPitchX=230,GridPitchY=190;
+ // Samsung's home app row (applist02): 14-unit squircles, 2-unit gaps, 1.2x focus; 8 px per unit at 1080p.
+ const int Tile=112,TileGap=16,DockPitch=Tile+TileGap,GridPitchX=230,GridPitchY=190;
+ const float TileFocusScale=1.2f,TileSquareness=.7f;
+ const string FocusStroke="/usr/apps/com.samsung.tv.theme-resource/shared/res/PRINCIPLE/FLUX/i_focus_stroke/i_focus_stroke_squircle_13.svg";
  sealed class Slot { public View Card,Shadow,FocusRing; public TextLabel Label; public string Name,Action,Description; public int Row,X,Y,W,H; }
  sealed class CachedArtwork { public ImageView Image; public View Parent; }
  readonly List<Slot> slots=new List<Slot>();
@@ -149,8 +152,8 @@ public sealed class QuietHome : NUIApplication
   if(page==0){
   Add(new ImageView{ResourceUrl=Root+"glass-shelf.svg",Position2D=new Position2D(0,784),Size2D=new Size2D(1920,280)});
   var docked=DockApps();
-  for(int i=0;i<docked.Count;i++)Dock(docked[i].Name,"app:"+docked[i].Id,i);
-  Dock("Your Apps","page:1",docked.Count);
+  for(int i=0;i<docked.Count;i++)Dock(docked[i].Name,"app:"+docked[i].Id,i,docked.Count+1);
+  Dock("Your Apps","page:1",docked.Count,docked.Count+1);
   }
   Toolbar("Apps","page:1","apps",0);Toolbar("Inputs","page:0","hdmi",1);Toolbar("Settings","page:2","settings",2);
   toolbarHint=Text("",1530,170,310,45,24,ink);toolbarHint.HorizontalAlignment=HorizontalAlignment.End;
@@ -186,15 +189,22 @@ public sealed class QuietHome : NUIApplication
  }
  View TileCard(int x,int y,LibraryApp app)
  {
-  var card=Panel(x+Tile/2,y+Tile/2,Tile,Tile,HexColor(app.Background),TileRadius);
-  card.PivotPoint=new Position(.5f,.5f,.5f);card.PositionUsesPivotPoint=true;
+  var card=SquircleCard(x,y,HexColor(app.Background));
   AddAppArtwork(card,app,Tile,Tile);return card;
  }
+ View SquircleCard(int x,int y,Color color)
+ {
+  var card=Panel(x+Tile/2,y+Tile/2,Tile,Tile,color,Tile/2);
+  card.CornerSquareness=new Vector4(TileSquareness,TileSquareness,TileSquareness,TileSquareness);
+  card.PivotPoint=new Position(.5f,.5f,.5f);card.PositionUsesPivotPoint=true;return card;
+ }
+ // The white inner outline Samsung's home draws on a focused squircle tile.
  View FocusRing(View card)
  {
-  var ring=new View{Position2D=new Position2D(-7,-7),Size2D=new Size2D(Tile+14,Tile+14),BackgroundColor=new Color(0,0,0,0),
-   CornerRadius=new Vector4(TileRadius+7,TileRadius+7,TileRadius+7,TileRadius+7),BorderlineWidth=4,BorderlineColor=white,Opacity=0};
-  card.Add(ring);return ring;
+  View ring=File.Exists(FocusStroke)?new ImageView{ResourceUrl=FocusStroke}:new View{BackgroundColor=new Color(0,0,0,0),
+   CornerRadius=new Vector4(Tile/2,Tile/2,Tile/2,Tile/2),CornerSquareness=new Vector4(TileSquareness,TileSquareness,TileSquareness,TileSquareness),
+   BorderlineWidth=4,BorderlineColor=white,BorderlineOffset=-1};
+  ring.Size2D=new Size2D(Tile,Tile);ring.Opacity=0;card.Add(ring);return ring;
  }
  void AddAppArtwork(View card,LibraryApp app,int w,int h)
  {
@@ -274,7 +284,8 @@ public sealed class QuietHome : NUIApplication
    FittingMode=FittingModeType.ShrinkToFit,
    SamplingMode=SamplingModeType.BoxThenLanczos,
    DesiredWidth=(int)Math.Ceiling(iw*2/cropWidth),DesiredHeight=(int)Math.Ceiling(ih*2/cropHeight),
-   ReleasePolicy=ReleasePolicyType.Destroyed,CornerRadius=tile?new Vector4(TileRadius,TileRadius,TileRadius,TileRadius):new Vector4(0,0,0,0)};
+   ReleasePolicy=ReleasePolicyType.Destroyed};
+  if(tile){image.CornerRadius=new Vector4(w/2f,w/2f,w/2f,w/2f);image.CornerSquareness=new Vector4(TileSquareness,TileSquareness,TileSquareness,TileSquareness);}
   if(crop!=null)image.PixelArea=new RelativeVector4(crop[0],crop[1],crop[2],crop[3]);
   cached=new CachedArtwork{Image=image,Parent=artworkPreloadRoot};
   artworkCache.Add(key,cached);artworkViewsCreated++;
@@ -344,13 +355,13 @@ public sealed class QuietHome : NUIApplication
   var sub=Text(description,x,760,w,36,24,muted);sub.HorizontalAlignment=HorizontalAlignment.Center;
   slots.Add(new Slot{Card=card,Shadow=shadow,Label=caption,Name=label,Action=action,Description=description,Row=0,X=x,Y=y,W=w,H=h});
  }
- void Dock(string label,string action,int n)
+ void Dock(string label,string action,int n,int count)
  {
-  int x=80+n*DockPitch,y=857;View card;
+  int x=(1920-count*DockPitch+TileGap)/2+n*DockPitch,y=857;View card;
   var app=action.StartsWith("app:")?library.Find(a=>a.Id==action.Substring(4)):null;
   if(app!=null)card=TileCard(x,y,app);
   else{
-   card=Panel(x+Tile/2,y+Tile/2,Tile,Tile,new Color(1,1,1,.09f),TileRadius);card.PivotPoint=new Position(.5f,.5f,.5f);card.PositionUsesPivotPoint=true;
+   card=SquircleCard(x,y,new Color(1,1,1,.09f));
    card.Add(new ImageView{ResourceUrl=Root+"symbol-apps.png",Color=ink,Position2D=new Position2D(Tile/2-22,Tile/2-22),Size2D=new Size2D(44,44)});
   }
   slots.Add(new Slot{Card=card,FocusRing=FocusRing(card),Name=label,Action=action,Description=label,Row=1,X=x,Y=y,W=Tile,H=Tile});
@@ -372,10 +383,10 @@ public sealed class QuietHome : NUIApplication
   for(int i=0;i<slots.Count;i++){
    var s=slots[i];bool f=area!=0&&selected==i;
    bool tile=page==1&&s.Row>=0||page==0&&s.Row==1;
-   float scale=f?(tile?1.15f:page==2&&s.Row>=0?1.035f:s.Row==0?1.05f:1.10f):1;
+   float scale=f?(tile?TileFocusScale:page==2&&s.Row>=0?1.035f:s.Row==0?1.05f:1.10f):1;
    s.Card.BorderlineWidth=!tile&&s.Row==0?1:0;
    s.Card.BorderlineColor=new Color(1,1,1,f?.8f:.12f);
-   var pos=new Position(s.X+s.W/2f,s.Y+s.H/2f-(f&&(s.Row==0||tile)?6:0),0);
+   var pos=new Position(s.X+s.W/2f,s.Y+s.H/2f-(f&&s.Row==0&&!tile?6:0),0);
    if(animate){focusAnimation.AnimateTo(s.Card,"Scale",new Vector3(scale,scale,1));focusAnimation.AnimateTo(s.Card,"Position",pos);}else{s.Card.Scale=new Vector3(scale,scale,1);s.Card.Position=pos;}
    if(s.Shadow!=null)s.Shadow.Opacity=f?1:.55f;
    if(s.FocusRing!=null)s.FocusRing.Opacity=f?1:0;
