@@ -69,8 +69,9 @@ public sealed class QuietHome : NUIApplication
  bool fontLoaded;
  Tizen.NUI.Timer clockTimer;
  int page, selected, lastSource, dockFocus;
- bool onTabs;
+ bool onTabs,paused;
  RecentItem recent=RecentItem.None;
+ LivePreview preview;
  string recentFrom="";
  readonly List<SourceInfo> inputs=new List<SourceInfo>();
  string editing="";
@@ -117,6 +118,9 @@ public sealed class QuietHome : NUIApplication
   try{curated=AppLibrary.Load(Root+"apps.json");library=new List<LibraryApp>(curated);}catch(Exception ex){libraryError=ex.Message;}
   Window.Default.BackgroundColor=new Color(0,0,0,1);
   Window.Default.Title="Quiet Home";Window.Default.KeyEvent+=OnKey;
+  // The live preview's app window sits under this one and shows through a hole.
+  try{Window.Default.SetTransparency(true);}catch{}
+  preview=new LivePreview(PreviewX,PreviewY,PreviewW,PreviewH,WriteState);
   try{dockIds=HomeDock.Parse(File.ReadAllText(DockFile));}catch{dockIds=null;}
   PreloadArtwork();QueryInstalled();
   RefreshSource();UpdateRecent();selected=-1;BuildPage();
@@ -125,20 +129,21 @@ public sealed class QuietHome : NUIApplication
  }
  protected override void OnResume()
  {
-  base.OnResume();clockTimer?.Start();RefreshSource();QueryInstalled();
+  base.OnResume();paused=false;clockTimer?.Start();RefreshSource();QueryInstalled();
   if(page==SettingsPage){RefreshSettings();UpdateFocus(false);}
-  if(UpdateRecent()&&page==HomePage){selected=-1;BuildPage();}
+  if(UpdateRecent()&&page==HomePage){selected=-1;BuildPage();}else SyncPreview();
   WriteState("resumed");
  }
  protected override void OnAppControlReceived(AppControlReceivedEventArgs e){base.OnAppControlReceived(e);string requested; if(e.ReceivedAppControl.ExtraData.TryGet("quiet_page",out requested)&&requested=="settings")OpenSettings("settings_request");else if(requested=="apps"){page=AppsPage;onTabs=false;selected=0;BuildPage();}else Home("home_request");}
- protected override void OnPause(){base.OnPause();editing="";holdTimer?.Stop();selectHeld=false;if(menuOptions!=null)CloseMenu();if(moving!=null)EndMove(false);clockTimer?.Stop();WriteState("paused");}
+ protected override void OnPause(){base.OnPause();paused=true;editing="";holdTimer?.Stop();selectHeld=false;if(menuOptions!=null)CloseMenu();if(moving!=null)EndMove(false);clockTimer?.Stop();preview.Release("pause");WriteState("paused");}
+ protected override void OnTerminate(){preview?.Release("terminate");base.OnTerminate();}
  string DockFile=>DirectoryInfo.Data+"dock.json";
  void Home(string activity)
  {
   clockTimer?.Start();RefreshSource();editing="";
   bool rebuild=UpdateRecent()||page!=HomePage;
   page=HomePage;onTabs=false;selected=-1;
-  if(rebuild)BuildPage();else{selected=DefaultFocus();UpdateFocus();}
+  if(rebuild)BuildPage();else{selected=DefaultFocus();UpdateFocus();SyncPreview();}
   WriteState(activity);
  }
  void OpenSettings(string activity){clockTimer?.Start();page=SettingsPage;onTabs=false;selected=0;editing="";BuildPage();WriteState(activity);}
@@ -176,6 +181,7 @@ public sealed class QuietHome : NUIApplication
   if(moveAnimation!=null){moveAnimation.Stop();moveAnimation.Dispose();moveAnimation=null;}
   DropArrows();moving=null;moveIds=null;
   ParkArtwork();pageArtworkCold=0;
+  preview.Detach();
   foreach(var v in scene){Window.Default.Remove(v);v.Dispose();}scene.Clear();slots.Clear();tabs=null;
   if(page==HomePage)BuildHome();
   else{
@@ -205,7 +211,14 @@ public sealed class QuietHome : NUIApplication
   }
   if(selected<0)selected=DefaultFocus();
   selected=Math.Max(0,Math.Min(selected,slots.Count-1));UpdateFocus(false);
-  buildMilliseconds=stopwatch.ElapsedMilliseconds;WriteState("page_ready");
+  buildMilliseconds=stopwatch.ElapsedMilliseconds;SyncPreview();WriteState("page_ready");
+ }
+ // A virtual screen is assigned only while Home shows a recent app and Quiet Home is in front.
+ void SyncPreview()
+ {
+  if(paused)preview.Release("paused");
+  else if(page==HomePage&&recent is RecentItem.App a)preview.Show(a.Item.Id);
+  else preview.ReleaseSoon();
  }
  // Home leads with what the owner was last in: its preview on the right, its
  // name and Resume on the left, the dock below, inputs and settings as pills.
@@ -220,6 +233,7 @@ public sealed class QuietHome : NUIApplication
    var ring=Panel(PreviewX-12,PreviewY-12,PreviewW+24,PreviewH+24,black,12);
    ring.BorderlineWidth=4;ring.BorderlineColor=white;ring.BorderlineOffset=-1;ring.Opacity=0;
    Still();
+   if(recent is RecentItem.App){var hole=preview.Hole();if(hole!=null)Add(hole);}
    var name=Text(RecentName(),96,550,512,150,60,homeInk,"Display");name.MultiLine=true;name.Ellipsis=true;name.VerticalAlignment=VerticalAlignment.Bottom;
    var resume=Card(96,732,208,60,raised,30);
    var play=new ImageView{ResourceUrl=Root+"symbol-play.svg",Position2D=new Position2D(24,18),Size2D=new Size2D(24,24),Color=homeInk};resume.Add(play);
@@ -520,31 +534,31 @@ public sealed class QuietHome : NUIApplication
    if(f)s.Card.RaiseToTop();
   }
   if(focusAnimation!=null)focusAnimation.Play();
-  if(page==HomePage){
-   if(!onTabs&&selected>=0&&selected<slots.Count&&slots[selected].Row==DockRow)dockFocus=Row(DockRow).IndexOf(selected);
-   HomeHints();
-   WriteState("focus");return;
+  if(page==HomePage)HomeHints();
+  else{
+   detail.Text=page==AppsPage&&!onTabs&&slots.Count>0?slots[selected].Name+" · "+slots[selected].Description:"";
+   if(page==SettingsPage){
+    slots[0].Label.Text=currentVolume<0?"Unavailable":currentVolume.ToString();
+    slots[1].Label.Text=SettingName("brightness");
+    slots[2].Label.Text=SettingName("game-mode");
+    slots[3].Label.Text=SettingName("sleeptimer");
+    slots[4].Label.Text=currentMute<0?"Unavailable":currentMute==1?"Muted":"Sound on";
+    slots[5].Label.Text="Pair controller";
+    slots[6].Label.Text="Connections";
+    slots[7].Label.Text="More settings";
+    detail.Text="Your everyday controls";
+   }
+   if(editing!="")detail.Text="Left / Right to adjust "+editing+" · Select or Back to finish";
   }
-  detail.Text=page==AppsPage&&!onTabs&&slots.Count>0?slots[selected].Name+" · "+slots[selected].Description:"";
-  if(page==SettingsPage){
-   slots[0].Label.Text=currentVolume<0?"Unavailable":currentVolume.ToString();
-   slots[1].Label.Text=SettingName("brightness");
-   slots[2].Label.Text=SettingName("game-mode");
-   slots[3].Label.Text=SettingName("sleeptimer");
-   slots[4].Label.Text=currentMute<0?"Unavailable":currentMute==1?"Muted":"Sound on";
-   slots[5].Label.Text="Pair controller";
-   slots[6].Label.Text="Connections";
-   slots[7].Label.Text="More settings";
-   detail.Text="Your everyday controls";
-  }
-  if(editing!="")detail.Text="Left / Right to adjust "+editing+" · Select or Back to finish";
   WriteState("focus");
  }
  // The focused dock tile's name sits under it, and the options hint shows only for an app.
+ // The dock also remembers that tile, wherever a Move left it, for the next Down.
  void HomeHints(Animation slide=null)
  {
   var s=onTabs||selected<0||selected>=slots.Count?null:slots[selected];
   bool dock=s!=null&&s.Row==DockRow;
+  if(dock)dockFocus=Row(DockRow).IndexOf(selected);
   tileName.Text=dock?s.Name:"";
   if(dock){float x=s.X+Tile/2f-TileNameW/2f;if(slide!=null)slide.AnimateTo(tileName,"PositionX",x);else tileName.PositionX=x;}
   pageHint.Opacity=moving==null&&SelectedApp()!=null?1:0;
@@ -807,6 +821,126 @@ public sealed class QuietHome : NUIApplication
    if(r==0)r=app_control_send_launch_request(c,IntPtr.Zero,IntPtr.Zero);WriteState("launch:"+id+(menuItem==null?"":":"+menuItem)+(resume?":resume":"")+":"+r);if(r!=0)ShowError("Could not open this screen. Try Advanced settings.");}finally{app_control_destroy(c);}
  }
  void ShowError(string text){notice.Text=text;}
- void WriteState(string activity){try{File.WriteAllText(StateFile,DateTime.UtcNow.ToString("o")+"\npage="+PageNames[page].ToLowerInvariant()+"\nselected="+selected+"\narea="+(onTabs?"tabs":selected>=0&&selected<slots.Count?"row"+slots[selected].Row:"")+"\nactivity="+activity+"\nkey="+lastKey+"\nfont_loaded="+fontLoaded+"\nrecent="+recent.Key+"\nrecent_from="+recentFrom+"\npreview="+(page!=HomePage||recent is RecentItem.Nothing?"none":"still")+"\nbuild_ms="+buildMilliseconds+"\nlibrary_page="+libraryPage+"\nlibrary_count="+library.Count+"\nlibrary_error="+libraryError+"\nlibrary_source="+librarySource+"\nstore_source="+storeSource+"\ndock="+(dockIds==null?"default":string.Join("|",dockIds))+"\nmenu="+(menuOptions==null?"":string.Join("|",menuOptions))+"\nmoving="+(moving??"")+"\nselected_name="+(selected>=0&&selected<slots.Count?slots[selected].Name:"")+"\nartwork_cached="+artworkCache.Count+"\nartwork_ready="+ArtworkReadyCount()+"\nartwork_pending="+ArtworkPending()+"\nartwork_views_created="+artworkViewsCreated+"\npage_artwork_cold="+pageArtworkCold+"\nprocess_id="+Process.GetCurrentProcess().Id+"\nediting="+editing+"\nvolume="+currentVolume+"\nmute="+currentMute+"\nbrightness="+SettingValue("brightness")+"\ngame-mode="+SettingValue("game-mode")+"\nsleeptimer="+SettingValue("sleeptimer")+"\n");}catch{}}
+ void WriteState(string activity){try{File.WriteAllText(StateFile,DateTime.UtcNow.ToString("o")+"\npage="+PageNames[page].ToLowerInvariant()+"\nselected="+selected+"\narea="+(onTabs?"tabs":selected>=0&&selected<slots.Count?"row"+slots[selected].Row:"")+"\nactivity="+activity+"\nkey="+lastKey+"\nfont_loaded="+fontLoaded+"\nrecent="+recent.Key+"\nrecent_from="+recentFrom+"\npreview="+(page!=HomePage||recent is RecentItem.Nothing?"none":preview.Live?"live":"still")+"\nbuild_ms="+buildMilliseconds+"\nlibrary_page="+libraryPage+"\nlibrary_count="+library.Count+"\nlibrary_error="+libraryError+"\nlibrary_source="+librarySource+"\nstore_source="+storeSource+"\ndock="+(dockIds==null?"default":string.Join("|",dockIds))+"\nmenu="+(menuOptions==null?"":string.Join("|",menuOptions))+"\nmoving="+(moving??"")+"\nselected_name="+(selected>=0&&selected<slots.Count?slots[selected].Name:"")+"\nartwork_cached="+artworkCache.Count+"\nartwork_ready="+ArtworkReadyCount()+"\nartwork_pending="+ArtworkPending()+"\nartwork_views_created="+artworkViewsCreated+"\npage_artwork_cold="+pageArtworkCold+"\nprocess_id="+Process.GetCurrentProcess().Id+"\nediting="+editing+"\nvolume="+currentVolume+"\nmute="+currentMute+"\nbrightness="+SettingValue("brightness")+"\ngame-mode="+SettingValue("game-mode")+"\nsleeptimer="+SettingValue("sleeptimer")+"\n"+preview?.Lines);}catch{}}
  public static void Main(string[] args){using(var app=new QuietHome())app.Run(args);}
+
+ // The recent app's own window, which Samsung's virtual screen linker scales
+ // into the preview rect under Quiet Home's window, as Samsung's home does.
+ // Off, or Live with the app's pid. Show and Release are safe to repeat.
+ sealed class LivePreview
+ {
+  const string Lib="/usr/lib/libvirtualscreen-linker.so",Flux="FLUX";
+  const int Screen=120;
+  [StructLayout(LayoutKind.Sequential)] struct Rect{public int X,Y,W,H;}
+  [StructLayout(LayoutKind.Sequential)] struct Corner{public float X,Y;}
+  [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate void StateChanged(string previous,string current,int result,IntPtr data);
+  [UnmanagedFunctionPointer(CallingConvention.Cdecl)] delegate void WindowResized(int screen,int pid,int result,int w,int h,IntPtr data);
+  // Every linker call returns 1 on success.
+  [DllImport(Lib)] static extern int VirtualScreenSetStateChangeCallback(StateChanged callback,IntPtr data);
+  [DllImport(Lib)] static extern int VirtualScreenSetWindowResizedCallback(WindowResized callback,IntPtr data);
+  [DllImport(Lib)] static extern int VirtualScreenEnableAutoRemoveByRestack();
+  [DllImport(Lib)] static extern int VirtualScreenSetGeometry(string state,int screen,ref Rect rect);
+  [DllImport(Lib)] static extern int VirtualScreenRequestStateChange(string state);
+  [DllImport(Lib)] static extern int VirtualScreenSetParentPID(int screen,int pid);
+  [DllImport(Lib)] static extern int VirtualScreenSetFocusSkip(int screen,int skip);
+  [DllImport(Lib)] static extern int VirtualScreenAssignPID(int pid,int screen);
+  [DllImport(Lib)] static extern int VirtualScreenDimSetAlpha(int screen,int alpha);
+  [DllImport(Lib)] static extern int VirtualScreenDimDisable(int screen);
+  [DllImport(Lib)] static extern int VirtualScreenRaise(int screen);
+  [DllImport(Lib)] static extern int VirtualScreenDeleteVirtualScreen(int screen);
+  readonly int x,y,w,h;
+  readonly Action<string> changed;
+  readonly List<string> log=new List<string>();
+  // The linker keeps these, so they live as long as the process.
+  StateChanged onState;
+  WindowResized onResize;
+  bool linked;
+  View hole;
+  string wanted,app="";
+  int pid=-1;
+  Tizen.NUI.Timer showTimer,releaseTimer;
+  public LivePreview(int x,int y,int w,int h,Action<string> changed){this.x=x;this.y=y;this.w=w;this.h=h;this.changed=changed;}
+  public bool Live=>pid>0;
+  public string Lines{get{lock(log)return "vs_pid="+(Live?pid.ToString():"")+"\n"+string.Concat(log.ConvertAll(l=>"vs="+l+"\n"));}}
+  void Log(string line){lock(log){log.Add(DateTime.UtcNow.ToString("HH:mm:ss.fff")+" "+line);if(log.Count>8)log.RemoveAt(0);}}
+  // Writes transparent pixels with blending off, so the window under Quiet Home
+  // shows through. Hidden, the still art beneath it shows instead.
+  public View Hole()
+  {
+   hole=null;
+   try{
+    var format=new PropertyMap();format.Add("aPosition",new PropertyValue((int)PropertyType.Vector2));
+    var corners=new VertexBuffer(format);corners.SetData(new[]{new Corner{X=-.5f,Y=-.5f},new Corner{X=.5f,Y=-.5f},new Corner{X=-.5f,Y=.5f},new Corner{X=.5f,Y=.5f}});
+    var quad=new Geometry();quad.AddVertexBuffer(corners);quad.SetType(Geometry.Type.TRIANGLE_STRIP);
+    var shader=new Shader("attribute mediump vec2 aPosition;\nuniform mediump mat4 uMvpMatrix;\nuniform mediump vec3 uSize;\nvoid main(){gl_Position=uMvpMatrix*vec4(aPosition*uSize.xy,0.0,1.0);}\n",
+     "precision mediump float;\nvoid main(){gl_FragColor=vec4(0.0,0.0,0.0,0.0);}\n");
+    var view=new View{Position2D=new Position2D(x,y),Size2D=new Size2D(w,h)};
+    view.AddRenderer(new Renderer(quad,shader){BlendMode=(int)BlendModeType.Off});
+    if(Live&&releaseTimer==null)view.Show();else view.Hide();
+    hole=view;
+   }catch(Exception ex){Log("hole_failed "+ex.GetType().Name);}
+   return hole;
+  }
+  // The scene is about to be disposed; its hole goes with it.
+  public void Detach(){hole=null;}
+  // Waits for Quiet Home to settle in front, as Samsung's home does.
+  public void Show(string appId)
+  {
+   releaseTimer?.Stop();releaseTimer=null;wanted=appId;
+   showTimer?.Stop();showTimer=new Tizen.NUI.Timer(400);
+   showTimer.Tick+=(s,e)=>{Apply();return false;};showTimer.Start();
+  }
+  public void Release(string why){showTimer?.Stop();releaseTimer?.Stop();releaseTimer=null;wanted=null;Unlink(why);}
+  // After leaving Home the app is let go only once the frame without the hole is
+  // surely on screen; until then the hole would show its full-size window.
+  public void ReleaseSoon()
+  {
+   showTimer?.Stop();wanted=null;
+   if(!Live||releaseTimer!=null)return;
+   releaseTimer=new Tizen.NUI.Timer(200);
+   releaseTimer.Tick+=(s,e)=>{releaseTimer=null;Unlink("left_home");changed("vs_released");return false;};releaseTimer.Start();
+  }
+  void Apply()
+  {
+   if(wanted==null)return;
+   int target=RunningPid(wanted);
+   if(target<=0||hole==null){Log("still "+wanted+(target<=0?" not_running":" no_hole"));Release("still");changed("vs_still");return;}
+   if(Live&&pid==target){hole.Show();changed("vs_kept");return;}
+   Unlink("switch");
+   var rc=new List<string>();bool assigned=false,ok=false;
+   bool Ok(string name,int result){rc.Add(name+"="+result);return result==1;}
+   try{
+    if(!linked){
+     onState=(before,after,result,data)=>Log("state "+before+">"+after+" "+result);
+     onResize=(screen,id,result,rw,rh,data)=>Log("resized pid="+id+" "+rw+"x"+rh+" "+result);
+     Log("linked state_cb="+VirtualScreenSetStateChangeCallback(onState,IntPtr.Zero)+" resize_cb="+VirtualScreenSetWindowResizedCallback(onResize,IntPtr.Zero)+" autoremove="+VirtualScreenEnableAutoRemoveByRestack());
+     linked=true;
+    }
+    var rect=new Rect{X=x,Y=y,W=w,H=h};
+    ok=Ok("geometry",VirtualScreenSetGeometry(Flux,Screen,ref rect))
+     &&Ok("state",VirtualScreenRequestStateChange(Flux))
+     &&Ok("parent",VirtualScreenSetParentPID(Screen,Environment.ProcessId))
+     &&Ok("focusskip",VirtualScreenSetFocusSkip(Screen,1))
+     &&(assigned=Ok("assign",VirtualScreenAssignPID(target,Screen)))
+     &&Ok("dimalpha",VirtualScreenDimSetAlpha(Screen,1))
+     &&Ok("dimoff",VirtualScreenDimDisable(Screen))
+     &&Ok("raise",VirtualScreenRaise(Screen));
+    if(!ok){if(assigned)rc.Add("unassign="+VirtualScreenAssignPID(target,-1));rc.Add("delete="+VirtualScreenDeleteVirtualScreen(Screen));}
+   }catch(Exception ex){ok=false;rc.Add("error="+ex.GetType().Name);}
+   if(ok){pid=target;app=wanted;hole.Show();}
+   Log((ok?"live ":"still ")+wanted+" pid="+target+" "+string.Join(" ",rc));
+   changed(ok?"vs_live":"vs_still");
+  }
+  // The hole goes opaque before the app is let go.
+  void Unlink(string why)
+  {
+   hole?.Hide();
+   if(!Live)return;
+   string rc;
+   try{rc="unassign="+VirtualScreenAssignPID(pid,-1)+" delete="+VirtualScreenDeleteVirtualScreen(Screen);}catch(Exception ex){rc="error="+ex.GetType().Name;}
+   Log("released "+app+" pid="+pid+" "+why+" "+rc);
+   pid=-1;app="";
+  }
+  static int RunningPid(string appId){try{using(var c=new ApplicationRunningContext(appId))return c.ProcessId;}catch{return -1;}}
+ }
 }
