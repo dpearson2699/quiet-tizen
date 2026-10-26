@@ -21,3 +21,5 @@ jobs:
         run: python3 tools/build.py payloads
       - name: Test native catalog logic without Samsung references
         run: dotnet run --project tests/CatalogTests.csproj -- launcher/assets/apps.json
+      - name: Test library, input, recent-app and settings logic
+        run: for t in Library Sources Recent Settings; do dotnet run --project tests/${t}Tests.csproj || exit 1; done
