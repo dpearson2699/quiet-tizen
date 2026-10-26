@@ -9,5 +9,6 @@
   <Reference Include="Tizen.Applications.Common"><HintPath>$(TV_FRAMEWORK_DIR)/Tizen.Applications.Common.dll</HintPath><Private>false</Private></Reference>
   <Reference Include="Tizen.System"><HintPath>$(TV_FRAMEWORK_DIR)/Tizen.System.dll</HintPath><Private>false</Private></Reference>
   <Reference Include="Tizen"><HintPath>$(TV_FRAMEWORK_DIR)/Tizen.dll</HintPath><Private>false</Private></Reference>
+  <Reference Include="Tizen.TV.DownloadableApplications"><HintPath>$(TV_FRAMEWORK_DIR)/Tizen.TV.DownloadableApplications.dll</HintPath><Private>false</Private></Reference>
  </ItemGroup>
 </Project>

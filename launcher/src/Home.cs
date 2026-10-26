@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using Tizen.NUI;
 using Tizen.NUI.BaseComponents;
 using Tizen.Applications;
+using Tizen.TV.DownloadableApplications;
 
 public sealed class QuietHome : NUIApplication
 {
@@ -22,7 +23,26 @@ public sealed class QuietHome : NUIApplication
  List<LibraryApp> curated=new List<LibraryApp>(),library=new List<LibraryApp>();
  System.Threading.Tasks.Task<IEnumerable<ApplicationInfo>> installedQuery;
  Tizen.NUI.Timer installedPoll;
- string librarySource="catalog";
+ string librarySource="catalog",storeSource="";
+ List<string> dockIds;
+ // Move mode: the dock app being repositioned and its unsaved order.
+ string moving;
+ List<string> moveIds;
+ List<string> menuOptions;
+ int menuIndex;
+ LibraryApp menuApp;
+ readonly List<View> overlay=new List<View>();
+ readonly List<View> menuRows=new List<View>();
+ readonly List<TextLabel> menuLabels=new List<TextLabel>();
+ bool pendingBuild,selectHeld,selectConsumed;
+ Tizen.NUI.Timer holdTimer,uninstallPoll;
+ AppManager appService;
+ AppManager.InstallEventHandler uninstallHandler;
+ volatile string uninstallOutcome;
+ LibraryApp uninstalling;
+ static readonly Dictionary<string,string> OptionText=new Dictionary<string,string>{
+  {"open","Open"},{"move","Move"},{"remove","Remove from Home"},
+  {"add","Add to Home"},{"delete","Delete app"},{"confirm-delete","Delete"},{"cancel","Cancel"}};
  int libraryPage;
  string libraryError="";
  TextLabel clock, notice, detail;
@@ -74,6 +94,7 @@ public sealed class QuietHome : NUIApplication
   try{curated=AppLibrary.Load(Root+"apps.json");library=new List<LibraryApp>(curated);}catch(Exception ex){libraryError=ex.Message;}
   Window.Default.BackgroundColor=new Color(0.96f,0.96f,0.97f,1);
   Window.Default.Title="Quiet Home";Window.Default.KeyEvent+=OnKey;
+  try{dockIds=HomeDock.Parse(File.ReadAllText(DockFile));}catch{dockIds=null;}
   PreloadArtwork();QueryInstalled();
   RefreshSource();selected=SourceIndex();BuildPage();
   clockTimer=new Tizen.NUI.Timer(30000);
@@ -81,7 +102,8 @@ public sealed class QuietHome : NUIApplication
  }
  protected override void OnResume(){base.OnResume();clockTimer?.Start();RefreshSource();QueryInstalled();if(tabs!=null&&page==2){RefreshSettings();UpdateFocus(false);}WriteState("resumed");}
  protected override void OnAppControlReceived(AppControlReceivedEventArgs e){base.OnAppControlReceived(e);string requested; if(e.ReceivedAppControl.ExtraData.TryGet("quiet_page",out requested)&&requested=="settings")OpenSettings("settings_request");else if(requested=="apps"){page=1;area=1;selected=0;BuildPage();}else Home("home_request");}
- protected override void OnPause(){base.OnPause();editing="";clockTimer?.Stop();WriteState("paused");}
+ protected override void OnPause(){base.OnPause();editing="";holdTimer?.Stop();selectHeld=false;if(menuOptions!=null)CloseMenu();if(moving!=null)EndMove(false);clockTimer?.Stop();WriteState("paused");}
+ string DockFile=>DirectoryInfo.Data+"dock.json";
  void Home(string activity){clockTimer?.Start();RefreshSource();if(tabs!=null){bool unchanged=page==0&&area==1&&editing==""&&selected==SourceIndex();page=0;area=1;editing="";selected=SourceIndex();if(!unchanged)BuildPage();WriteState(activity);}}
  void OpenSettings(string activity){clockTimer?.Start();page=2;area=1;selected=0;editing="";BuildPage();WriteState(activity);}
  void RefreshSource(){
@@ -132,7 +154,7 @@ public sealed class QuietHome : NUIApplication
   toolbarHint=Text("",1530,170,310,45,24,ink);toolbarHint.HorizontalAlignment=HorizontalAlignment.End;
   detail=Text("",80,1030,1320,35,20,muted);
   notice=Text("",80,1008,1760,34,22,accent);
-  var hint=Text(page==1?(AppLibrary.PageCount(library.Count)<=1?"Select to open · Back to Home":libraryPage+1<AppLibrary.PageCount(library.Count)?"Down for more apps · Back to Home":"Up for previous apps · Back to Home"):"Back to input",1310,1030,530,35,20,muted);hint.HorizontalAlignment=HorizontalAlignment.End;
+  var hint=Text(page==1?(AppLibrary.PageCount(library.Count)<=1?"Hold Select for options · Back to Home":libraryPage+1<AppLibrary.PageCount(library.Count)?"Hold Select for options · Down for more":"Hold Select for options · Up for previous"):page==0?(moving!=null?"":"Hold Select on an app for options · Back to input"):"Back to input",1110,1030,730,35,20,muted);hint.HorizontalAlignment=HorizontalAlignment.End;
   selected=Math.Max(0,Math.Min(selected,slots.Count-1));UpdateFocus(false);
   buildMilliseconds=stopwatch.ElapsedMilliseconds;WriteState("page_ready");
  }
@@ -188,7 +210,8 @@ public sealed class QuietHome : NUIApplication
   foreach(var app in library)if(AppLibrary.HasImage(app))GetArtwork(app,328,184);
   foreach(var app in DockApps())if(AppLibrary.HasImage(app))GetArtwork(app,253,126);
  }
- List<LibraryApp> DockApps(){var apps=library.FindAll(a=>!a.Utility);return apps.GetRange(0,Math.Min(3,apps.Count));}
+ List<LibraryApp> DockApps()=>HomeDock.Resolve(moving!=null?moveIds:dockIds,library);
+ List<string> DockIds()=>DockApps().ConvertAll(a=>a.Id);
  // The installed-app query is asynchronous; a main-loop timer applies its result
  // so every scene change stays on the UI thread.
  void QueryInstalled()
@@ -205,12 +228,29 @@ public sealed class QuietHome : NUIApplication
   var tv=new List<InstalledApp>();
   try{foreach(var a in installedQuery.Result)tv.Add(new InstalledApp{Id=a.ApplicationId,Label=a.Label,IconPath=a.IconPath,Type=a.ApplicationType,NoDisplay=a.IsNoDisplay});}
   catch(Exception ex){librarySource="catalog:"+ex.GetBaseException().GetType().Name;WriteState("library_failed");return;}
+  EnrichFromStore(tv);
   var merged=AppLibrary.Merge(curated,tv);
   bool changed=merged.Count!=library.Count||!merged.TrueForAll(a=>library.Exists(b=>b.Id==a.Id&&b.Asset==a.Asset));
   library=merged;librarySource="installed:"+tv.Count;
   if(changed){foreach(var app in library)if(AppLibrary.HasImage(app))GetArtwork(app,328,184);foreach(var app in DockApps())if(AppLibrary.HasImage(app))GetArtwork(app,253,126);
-   if(editing==""&&(page==0||page==1))BuildPage();}
+   if(menuOptions!=null||moving!=null)pendingBuild=true;else if(editing==""&&(page==0||page==1))BuildPage();}
   WriteState("library_ready");
+ }
+ // Samsung's app service knows each app's store ID, whether it can be removed,
+ // and the square tiles its own home draws. Package icons are often placeholders.
+ void EnrichFromStore(List<InstalledApp> tv)
+ {
+  try{
+   var store=new Dictionary<string,DownloadableApp>();
+   foreach(var d in new AppDB().GetAllAppList())if(!string.IsNullOrEmpty(d.AppId))store[d.AppId]=d;
+   foreach(var a in tv){
+    if(!store.TryGetValue(a.Id,out var d))continue;
+    a.StoreId=d.StoreId??"";a.Removable=d.IsRemovable;
+    string dir=d.IconPath??"";
+    if(Directory.Exists(dir)){string best=AppLibrary.BestIcon(Array.ConvertAll(Directory.GetFiles(dir),System.IO.Path.GetFileName));if(best!="")a.IconPath=System.IO.Path.Combine(dir,best);}
+   }
+   storeSource="store:"+store.Count;
+  }catch(Exception ex){storeSource="store:"+ex.GetBaseException().GetType().Name;}
  }
  CachedArtwork GetArtwork(LibraryApp app,int w,int h)
  {
@@ -345,15 +385,23 @@ public sealed class QuietHome : NUIApplication
    detail.Text="Your everyday controls";
   }
   if(editing!="")detail.Text="Left / Right to adjust "+editing+" · Select or Back to finish";
+  if(moving!=null&&area==2&&selected<slots.Count&&slots[selected].Action=="app:"+moving){
+   slots[selected].Card.BorderlineWidth=5;slots[selected].Card.BorderlineColor=accent;
+   detail.Text="Left / Right to move · Select to keep · Back to cancel";}
   WriteState("focus");
  }
  void OnKey(object sender,Window.KeyEventArgs e)
  {
-  if(e.Key==null||e.Key.State!=Key.StateType.Down)return;string k=e.Key.KeyPressedName;
+  if(e.Key==null)return;string k=e.Key.KeyPressedName;bool select=k=="Return"||k=="KP_Enter";
+  if(select&&e.Key.State==Key.StateType.Up){ReleaseSelect();return;}
+  if(e.Key.State!=Key.StateType.Down||select&&selectHeld)return;
   long now=Environment.TickCount64;if(k==lastKey&&now-lastKeyAt<180)return;lastKey=k;lastKeyAt=now;
   try{
-   if(k=="XF86Home"){Home("home_key");return;}
+   if(k=="XF86Home"){if(menuOptions!=null)CloseMenu();if(moving!=null)EndMove(false);Home("home_key");return;}
+   if(menuOptions!=null){MenuKey(k);return;}
+   if(moving!=null){MoveKey(k);return;}
    if(k=="XF86SysMenu"||k=="XF86More"){OpenSettings("settings_key");return;}
+   if(select&&editing==""&&area!=0&&SelectedApp()!=null){PressSelect();return;}
    if(page==1&&HandleLibraryKey(k))return;
    if(editing!=""){if(k=="Left"||k=="Right"){int d=k=="Left"?-1:1;if(editing=="volume")ChangeVolume(d);else ChangeBrightness(d);}else if(k=="Return"||k=="KP_Enter"||k=="XF86Back"||k=="Back"||k=="Escape"){editing="";UpdateFocus();}return;}
    if(k=="Up"){if(area==2){int col=Row(1).IndexOf(selected);area=1;selected=Row(0)[page==2?col:0];}else if(area==1)area=0;UpdateFocus();}
@@ -396,6 +444,132 @@ public sealed class QuietHome : NUIApplication
   if(a=="sleeptimer"){RefreshSettings();int n;if(int.TryParse(SettingValue(a),out n))SetSetting(a,((n+1)%5).ToString());return;}
   if(a=="mute"){int n;int r=sound_manager_get_master_mute(out n);if(r==0)r=sound_manager_set_master_mute(n==1?0:1);if(r!=0)ShowError("Use the remote's mute button.");RefreshSettings();UpdateFocus();WriteState("mute_changed");}
  }
+ // Apps open when Select is released; holding it opens their options instead.
+ LibraryApp SelectedApp()
+ {
+  if(selected<0||selected>=slots.Count)return null;var s=slots[selected];
+  if(!s.Action.StartsWith("app:")||!(page==1&&s.Row>=0||page==0&&s.Row==1))return null;
+  var app=library.Find(a=>a.Id==s.Action.Substring(4));return app==null||app.Utility?null:app;
+ }
+ void PressSelect()
+ {
+  selectHeld=true;selectConsumed=false;holdTimer?.Stop();
+  holdTimer=new Tizen.NUI.Timer(600);
+  holdTimer.Tick+=(s,e)=>{if(selectHeld&&!selectConsumed){selectConsumed=true;OpenOptions();}return false;};
+  holdTimer.Start();
+ }
+ void ReleaseSelect()
+ {
+  holdTimer?.Stop();bool tap=selectHeld&&!selectConsumed;selectHeld=false;
+  if(tap){try{Activate();}catch(Exception ex){ShowError(ex.Message);}}
+ }
+ void OpenOptions(){var app=SelectedApp();if(app!=null)ShowMenu(app.Name,null,AppOptions.For(app,DockIds(),page==0),app);}
+ void ShowMenu(string title,string message,List<string> options,LibraryApp app)
+ {
+  ClearOverlay();menuOptions=options;menuIndex=0;menuApp=app;
+  int w=680,rowH=78,top=message==null?118:190,h=top+options.Count*rowH+30,x=(1920-w)/2,y=(1080-h)/2;
+  Overlay(new View{Size2D=new Size2D(1920,1080),BackgroundColor=new Color(0,0,0,.45f)});
+  var panel=Overlay(new View{Position2D=new Position2D(x,y),Size2D=new Size2D(w,h),BackgroundColor=new Color(.98f,.98f,.99f,1),CornerRadius=new Vector4(28,28,28,28)});
+  panel.Add(Label(title,40,34,w-80,56,36,ink,"Semibold"));
+  if(message!=null){var m=Label(message,40,100,w-80,76,24,muted);m.MultiLine=true;panel.Add(m);}
+  for(int i=0;i<options.Count;i++){
+   var row=new View{Position2D=new Position2D(24,top+i*rowH),Size2D=new Size2D(w-48,rowH-10),CornerRadius=new Vector4(18,18,18,18)};
+   var label=Label(OptionText[options[i]],26,0,w-100,rowH-10,29,ink);row.Add(label);panel.Add(row);menuRows.Add(row);menuLabels.Add(label);
+  }
+  UpdateMenuFocus();WriteState("menu:"+string.Join("|",options));
+ }
+ View Overlay(View v){overlay.Add(v);Window.Default.Add(v);return v;}
+ void ClearOverlay(){foreach(var v in overlay){Window.Default.Remove(v);v.Dispose();}overlay.Clear();menuRows.Clear();menuLabels.Clear();}
+ void UpdateMenuFocus()
+ {
+  for(int i=0;i<menuRows.Count;i++){bool f=i==menuIndex;menuRows[i].BackgroundColor=f?accent:new Color(0,0,0,0);menuLabels[i].TextColor=f?white:ink;menuLabels[i].FontFamily="Quiet Inter "+(f?"Semibold":"Medium");}
+ }
+ void CloseMenu()
+ {
+  ClearOverlay();menuOptions=null;menuApp=null;
+  if(pendingBuild){pendingBuild=false;BuildPage();}
+  WriteState("menu_closed");
+ }
+ void MenuKey(string k)
+ {
+  if(k=="Up"||k=="Down"){menuIndex=(menuIndex+(k=="Up"?-1:1)+menuOptions.Count)%menuOptions.Count;UpdateMenuFocus();}
+  else if(k=="Return"||k=="KP_Enter")ChooseOption(menuOptions[menuIndex]);
+  else if(k=="XF86Back"||k=="Back"||k=="Escape"||k=="XF86Exit")CloseMenu();
+ }
+ void ChooseOption(string option)
+ {
+  var app=menuApp;
+  // Cancel is listed first so a stray Select never deletes anything.
+  if(option=="delete"){ShowMenu("Delete "+app.Name+"?","This removes the app and its data from the TV.",new List<string>{"cancel","confirm-delete"},app);return;}
+  CloseMenu();
+  if(option=="open")Launch(app.Id);
+  else if(option=="add")SaveDock(HomeDock.Add(DockIds(),app.Id),app.Id,"Added "+app.Name+" to Home.");
+  else if(option=="remove")SaveDock(HomeDock.Remove(DockIds(),app.Id),null,"Removed "+app.Name+" from Home.");
+  else if(option=="move")StartMove(app);
+  else if(option=="confirm-delete")StartUninstall(app);
+ }
+ // Like Samsung's own reorder: Left/Right slide the app one slot per press,
+ // Select keeps the new order and Back puts it back.
+ void StartMove(LibraryApp app)
+ {
+  moveIds=DockIds();moving=app.Id;ShowMoving();WriteState("move_started:"+app.Id);
+ }
+ void MoveKey(string k)
+ {
+  if(k=="Left"||k=="Right"){var next=HomeDock.Move(moveIds,moving,k=="Left"?-1:1);if(string.Join("|",next)!=string.Join("|",moveIds)){moveIds=next;ShowMoving();}}
+  else if(k=="Return"||k=="KP_Enter")EndMove(true);
+  else if(k=="XF86Back"||k=="Back"||k=="Escape"||k=="XF86Exit")EndMove(false);
+ }
+ void ShowMoving()
+ {
+  BuildPage();int at=slots.FindIndex(s=>s.Action=="app:"+moving);
+  if(at>=0){area=2;selected=at;UpdateFocus(false);}
+  WriteState("moving:"+string.Join("|",moveIds));
+ }
+ void EndMove(bool keep)
+ {
+  string id=moving;var ids=moveIds;moving=null;moveIds=null;pendingBuild=false;
+  if(keep)SaveDock(ids,id,"");
+  else if(page==0){BuildPage();int at=slots.FindIndex(s=>s.Action=="app:"+id);if(at>=0){area=2;selected=at;UpdateFocus(false);}}
+  WriteState(keep?"move_saved":"move_cancelled");
+ }
+ void SaveDock(List<string> ids,string focusId,string message)
+ {
+  try{File.WriteAllText(DockFile,HomeDock.Serialize(ids));}
+  catch(Exception ex){ShowError("Home could not be saved.");WriteState("dock_save_failed:"+ex.GetType().Name);return;}
+  dockIds=ids;
+  if(page==0){
+   BuildPage();int at=focusId==null?-1:slots.FindIndex(s=>s.Action=="app:"+focusId);
+   var dock=Row(1);area=2;selected=at>=0?at:dock.Count>0?dock[0]:selected;UpdateFocus(false);
+  }
+  notice.Text=message;WriteState("dock:"+string.Join("|",ids));
+ }
+ // Samsung's app service performs the uninstall; its callback may arrive on
+ // another thread, so a main-loop timer applies the outcome.
+ void StartUninstall(LibraryApp app)
+ {
+  if(uninstalling!=null){ShowError("Still deleting "+uninstalling.Name+".");return;}
+  try{
+   appService??=new AppManager();uninstallOutcome=null;
+   uninstallHandler=(storeId,type,progress,error,data)=>{
+    if(type==AppManager.CallBackEventType.WAS_EVENT_UNINSTALL_SUCCESS)uninstallOutcome="ok";
+    else if(type==AppManager.CallBackEventType.WAS_EVENT_UNINSTALL_FAILED)uninstallOutcome="failed:"+error;};
+   appService.Uninstall(new InstallControl(app.StoreId),uninstallHandler);
+  }catch(Exception ex){ShowError(app.Name+" could not be deleted.");WriteState("uninstall_failed:"+app.Id+":"+ex.GetBaseException().GetType().Name);return;}
+  uninstalling=app;notice.Text="Deleting "+app.Name+"…";WriteState("uninstall_started:"+app.Id);
+  int waited=0;uninstallPoll?.Stop();uninstallPoll=new Tizen.NUI.Timer(250);
+  uninstallPoll.Tick+=(s,e)=>{waited+=250;string outcome=uninstallOutcome;if(outcome==null&&waited<120000)return true;FinishUninstall(outcome??"timeout");return false;};
+  uninstallPoll.Start();
+ }
+ void FinishUninstall(string outcome)
+ {
+  var app=uninstalling;uninstalling=null;
+  if(outcome=="ok"){
+   if(dockIds!=null&&dockIds.Contains(app.Id))SaveDock(HomeDock.Remove(dockIds,app.Id),null,"");
+   notice.Text=app.Name+" was deleted.";QueryInstalled();
+  }else ShowError(app.Name+" could not be deleted.");
+  WriteState("uninstall:"+app.Id+":"+outcome);
+ }
  void RefreshSettings(){
   currentVolume=sound_manager_get_master_volume(out var v)==0?v:-1;
   currentMute=sound_manager_get_master_mute(out var m)==0?m:-1;
@@ -435,6 +609,6 @@ public sealed class QuietHome : NUIApplication
    if(r==0)r=app_control_send_launch_request(c,IntPtr.Zero,IntPtr.Zero);WriteState("launch:"+id+(menuItem==null?"":":"+menuItem)+":"+r);if(r!=0)ShowError("Could not open this screen. Try Advanced settings.");}finally{app_control_destroy(c);}
  }
  void ShowError(string text){notice.Text=text;}
- void WriteState(string activity){try{File.WriteAllText(StateFile,DateTime.UtcNow.ToString("o")+"\npage="+page+"\nselected="+selected+"\narea="+area+"\nactivity="+activity+"\nkey="+lastKey+"\nfont_loaded="+fontLoaded+"\nstyle=free-my-tv\nbuild_ms="+buildMilliseconds+"\nlibrary_page="+libraryPage+"\nlibrary_count="+library.Count+"\nlibrary_error="+libraryError+"\nlibrary_source="+librarySource+"\nselected_name="+(selected>=0&&selected<slots.Count?slots[selected].Name:"")+"\nartwork_cached="+artworkCache.Count+"\nartwork_ready="+ArtworkReadyCount()+"\nartwork_pending="+ArtworkPending()+"\nartwork_views_created="+artworkViewsCreated+"\npage_artwork_cold="+pageArtworkCold+"\nprocess_id="+Process.GetCurrentProcess().Id+"\nediting="+editing+"\nvolume="+currentVolume+"\nmute="+currentMute+"\nbrightness="+SettingValue("brightness")+"\ngame-mode="+SettingValue("game-mode")+"\nsleeptimer="+SettingValue("sleeptimer")+"\n");}catch{}}
+ void WriteState(string activity){try{File.WriteAllText(StateFile,DateTime.UtcNow.ToString("o")+"\npage="+page+"\nselected="+selected+"\narea="+area+"\nactivity="+activity+"\nkey="+lastKey+"\nfont_loaded="+fontLoaded+"\nstyle=free-my-tv\nbuild_ms="+buildMilliseconds+"\nlibrary_page="+libraryPage+"\nlibrary_count="+library.Count+"\nlibrary_error="+libraryError+"\nlibrary_source="+librarySource+"\nstore_source="+storeSource+"\ndock="+(dockIds==null?"default":string.Join("|",dockIds))+"\nmenu="+(menuOptions==null?"":string.Join("|",menuOptions))+"\nmoving="+(moving??"")+"\nselected_name="+(selected>=0&&selected<slots.Count?slots[selected].Name:"")+"\nartwork_cached="+artworkCache.Count+"\nartwork_ready="+ArtworkReadyCount()+"\nartwork_pending="+ArtworkPending()+"\nartwork_views_created="+artworkViewsCreated+"\npage_artwork_cold="+pageArtworkCold+"\nprocess_id="+Process.GetCurrentProcess().Id+"\nediting="+editing+"\nvolume="+currentVolume+"\nmute="+currentMute+"\nbrightness="+SettingValue("brightness")+"\ngame-mode="+SettingValue("game-mode")+"\nsleeptimer="+SettingValue("sleeptimer")+"\n");}catch{}}
  public static void Main(string[] args){using(var app=new QuietHome())app.Run(args);}
 }

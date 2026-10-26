@@ -12,17 +12,18 @@ All UI text here is English. See [attribution](../NOTICE.md).
 ## Obtain matching private framework references
 
 Build against the TV's own compatible `Tizen.NUI.dll`,
-`Tizen.Applications.Common.dll`, `Tizen.System.dll` and `Tizen.dll`.
+`Tizen.Applications.Common.dll`, `Tizen.System.dll`, `Tizen.dll` and
+`Tizen.TV.DownloadableApplications.dll`.
 The shipped project files use `Private=false`, so those references are not
 copied into the app package.
 
 Find the paths on the target:
 
 ```sh
-tv exec --command 'find /usr/share/dotnet.tizen -name Tizen.NUI.dll -o -name Tizen.Applications.Common.dll -o -name Tizen.System.dll -o -name Tizen.dll'
+tv exec --command 'find /usr/share/dotnet.tizen -name Tizen.NUI.dll -o -name Tizen.Applications.Common.dll -o -name Tizen.System.dll -o -name Tizen.dll -o -name Tizen.TV.DownloadableApplications.dll'
 ```
 
-Inspect the results and pull the four matching runtime assemblies individually
+Inspect the results and pull the five matching runtime assemblies individually
 with `tv pull REMOTE_PATH .local/tv-framework/NAME.dll`. Do not use a random
 desktop/mobile SDK version just because it has a file with the same name.
 Do not commit the resulting assemblies.
@@ -54,11 +55,21 @@ tv exec --command '/usr/bin/dotnet /home/owner/share/tmp/sdk_tools/quiet-tizen/P
 The app library is the TV's installed store apps plus Samsung's preinstalled
 media apps, read at launch through the application manager. `apps.json` is the
 curated layer on top. Its entries come first in catalog order and supply
-publisher artwork (see [app configuration](06-artwork.md)); the dock shows the
-first three. Installed apps without curated art use the TV's own app icon, and
-catalog entries for apps that are not installed are hidden. If the query fails,
-the catalog alone is shown. `library_source` in `/tmp/quiet-home-state.txt`
-reports which happened.
+publisher artwork (see [app configuration](06-artwork.md)). Installed apps
+without curated art use the square tile Samsung's own home draws, read from
+its app service; many package icons are only a placeholder. Catalog entries for
+apps that are not installed are hidden. If the query fails, the catalog alone
+is shown. `library_source` and `store_source` in `/tmp/quiet-home-state.txt`
+report which happened.
+
+Selecting an app opens it when Select is released. Holding Select opens its
+options: Open, Add to Home or Remove from Home, Move (on the Home dock) and
+Delete app when Samsung's app service marks it removable. Move works like
+Samsung's reorder: Left and Right slide the app, Select keeps the order and
+Back cancels. The dock holds up to five apps; until it is edited it shows the
+first three, and the edited order is saved in the app's data directory as
+`dock.json`. Delete asks for confirmation, with Cancel focused, then uses
+Samsung's uninstall.
 
 ## Install without changing Home yet
 

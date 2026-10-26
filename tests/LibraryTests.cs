@@ -10,6 +10,8 @@ static class LibraryTests
  static InstalledApp Tv(string id, string label, string type, string icon = "", bool hidden = false) =>
   new InstalledApp{Id=id, Label=label, Type=type, IconPath=icon, NoDisplay=hidden};
  static string Names(List<LibraryApp> apps) => string.Join(",", apps.ConvertAll(a => a.Name));
+ static string Ids(List<LibraryApp> apps) => string.Join(",", apps.ConvertAll(a => a.Id));
+ static LibraryApp App(string id) => new LibraryApp{Name=id.ToUpperInvariant(), Id=id};
 
  public static int Main()
  {
@@ -52,6 +54,50 @@ static class LibraryTests
 
   Equal("Tubi", AppLibrary.Clean("Tubi - Free Movies ＆ TV"), "store tagline trimmed");
   Equal("Disney+", AppLibrary.Clean("Disney+"), "plain label untouched");
+
+  // Store identity travels with the app whichever artwork wins.
+  var stored = new List<InstalledApp>(installed);
+  stored[0] = new InstalledApp{Id="org.tizen.netflix-app", Label="Netflix", Type="capp", IconPath="/x.png", StoreId="3201907018807", Removable=true};
+  stored.Add(new InstalledApp{Id="PvWgqxV3Xa.YouTubeTV", Label="YouTube TV", Type="webapp", IconPath="/opt/share/webappservice/apps_icon/all/3201707014489/304x304.png", StoreId="3201707014489", Removable=true});
+  var storeLib = AppLibrary.Merge(curated, stored);
+  Equal("3201907018807", storeLib[0].StoreId, "curated entry keeps its store id");
+  Equal("app-icons/netflix.svg", storeLib[0].Asset, "store id does not replace curated art");
+  if (!storeLib[0].Removable) throw new Exception("curated entry keeps removability");
+  if (curated[0].StoreId != "") throw new Exception("merge must not mutate the curated catalog");
+  var ytv = storeLib.Find(a => a.Id == "PvWgqxV3Xa.YouTubeTV");
+  Equal("3201707014489", ytv.StoreId, "tv entry carries its store id");
+  if (storeLib.Find(a => a.Id == "gzcc4LRFBF.Peacock").Removable) throw new Exception("apps WAS does not know are not removable");
+
+  Equal("608x608.png", AppLibrary.BestIcon(new[]{"40x40.png","304x304.png","608x608.png","emanual_myapps.png","208x208.png"}), "largest square tile wins");
+  Equal("", AppLibrary.BestIcon(new[]{"emanual_myapps.png","300x200.png"}), "no square tile");
+  Equal("", AppLibrary.BestIcon(null), "missing folder");
+
+  // Dock: three defaults until the owner edits it, then their saved order.
+  var apps = new List<LibraryApp>{App("a"),App("b"),App("c"),App("d"),App("e"),App("f"),App("g"),new LibraryApp{Name="Apps",Id="org.volt.apps",Utility=true}};
+  Equal("a,b,c", Ids(HomeDock.Resolve(null, apps)), "unedited dock shows the first three apps");
+  Equal("d,a", Ids(HomeDock.Resolve(new List<string>{"d","gone","a","d","org.volt.apps"}, apps)), "saved order kept; uninstalled, duplicate and utility ids dropped");
+  Equal("", Ids(HomeDock.Resolve(new List<string>(), apps)), "an emptied dock stays empty");
+  Equal("a,b,c,d,e", Ids(HomeDock.Resolve(new List<string>{"a","b","c","d","e","f"}, apps)), "dock holds at most five apps");
+  var ids = new List<string>{"a","b","c"};
+  Equal("a,b,c,d", string.Join(",", HomeDock.Add(ids, "d")), "add appends");
+  Equal("a,b,c", string.Join(",", ids), "edits return a new list");
+  Equal("a,b,c", string.Join(",", HomeDock.Add(ids, "b")), "adding a docked app is a no-op");
+  Equal("a,b,c,d,e", string.Join(",", HomeDock.Add(new List<string>{"a","b","c","d","e"}, "f")), "a full dock ignores add");
+  Equal("a,c", string.Join(",", HomeDock.Remove(ids, "b")), "remove");
+  Equal("b,a,c", string.Join(",", HomeDock.Move(ids, "b", -1)), "move left");
+  Equal("a,c,b", string.Join(",", HomeDock.Move(ids, "b", 1)), "move right");
+  Equal("a,b,c", string.Join(",", HomeDock.Move(ids, "c", 1)), "move past the end is a no-op");
+  Equal("a,b,c", string.Join(",", HomeDock.Parse(HomeDock.Serialize(ids))), "round trip");
+  if (HomeDock.Parse("not json") != null || HomeDock.Parse("") != null) throw new Exception("bad saved dock reads as unedited");
+
+  // Options: what the hold-Select menu offers for an app.
+  var removable = new LibraryApp{Name="Hulu", Id="b", StoreId="1", Removable=true};
+  Equal("open,move,remove,delete", string.Join(",", AppOptions.For(removable, ids, true)), "docked app on Home");
+  Equal("open,move,remove", string.Join(",", AppOptions.For(App("a"), ids, true)), "no store id, no delete");
+  Equal("open,remove", string.Join(",", AppOptions.For(App("a"), new List<string>{"a"}, true)), "a lone dock app has nowhere to move");
+  Equal("open,remove,delete", string.Join(",", AppOptions.For(removable, ids, false)), "docked app in Your Apps");
+  Equal("open,add", string.Join(",", AppOptions.For(App("d"), ids, false)), "undocked app can be added");
+  Equal("open", string.Join(",", AppOptions.For(App("f"), new List<string>{"a","b","c","d","e"}, false)), "full dock offers no add");
 
   Console.WriteLine("LibraryTests: all passed");
   return 0;
