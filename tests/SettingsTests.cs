@@ -43,6 +43,11 @@ static class SettingsTests
   Equal("Select opens Samsung's settings menu.", SettingsCatalog.Keys(Array.Find(rows, r => r.Id == "all"), true), "a link says what it opens");
   Equal("The TV isn't offering this right now.", SettingsCatalog.Keys(Array.Find(rows, r => r.Id == "game-mode"), false), "an unavailable row says so");
 
+  Equal("Wired", SettingsCatalog.NetworkName(3), "an Ethernet connection reads as Wired");
+  Equal("Wi-Fi", SettingsCatalog.NetworkName(2), "a Wi-Fi connection reads as Wi-Fi");
+  Equal("Not connected", SettingsCatalog.NetworkName(0), "no connection says so");
+  Equal(null, Array.Find(rows, r => r.Id == "network").Shows, "the network row shows what the TV reports, not a fixed label");
+
   Console.WriteLine("SettingsTests: all passed");
   return 0;
  }
