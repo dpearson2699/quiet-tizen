@@ -19,7 +19,7 @@ public sealed class QuietHome : NUIApplication
  const float TileFocusScale=1.2f,TileSquareness=.7f;
  const string FocusStroke="/usr/apps/com.samsung.tv.theme-resource/shared/res/PRINCIPLE/FLUX/i_focus_stroke/i_focus_stroke_squircle_13.svg";
  sealed class Slot { public View Card,Shadow,FocusRing; public TextLabel Label; public string Name,Action,Description; public int Row,X,Y,W,H; }
- sealed class CachedArtwork { public ImageView Image; public View Parent; }
+ sealed class CachedArtwork { public ImageView Image; public View Parent; public string Asset,Fit; }
  readonly List<Slot> slots=new List<Slot>();
  readonly List<View> scene=new List<View>();
  readonly Dictionary<string,CachedArtwork> artworkCache=new Dictionary<string,CachedArtwork>();
@@ -274,7 +274,11 @@ public sealed class QuietHome : NUIApplication
  CachedArtwork GetArtwork(LibraryApp app,int w,int h)
  {
   string key=app.Id+"@"+w+"x"+h;
-  if(artworkCache.TryGetValue(key,out var cached))return cached;
+  if(artworkCache.TryGetValue(key,out var cached)){
+   if(cached.Asset==app.Asset&&cached.Fit==app.Fit)return cached;
+   // The installed-app query replaced catalog art with the TV's tile.
+   cached.Parent.Remove(cached.Image);cached.Image.Dispose();artworkCache.Remove(key);
+  }
   // TV tiles fill the square; curated stand-in art sits inside it.
   bool tile=app.Fit=="tile";
   int iw=tile?w:w-24,ih=tile?h:h-24;var crop=app.Crop;
@@ -287,7 +291,7 @@ public sealed class QuietHome : NUIApplication
    ReleasePolicy=ReleasePolicyType.Destroyed};
   if(tile){image.CornerRadius=new Vector4(w/2f,w/2f,w/2f,w/2f);image.CornerSquareness=new Vector4(TileSquareness,TileSquareness,TileSquareness,TileSquareness);}
   if(crop!=null)image.PixelArea=new RelativeVector4(crop[0],crop[1],crop[2],crop[3]);
-  cached=new CachedArtwork{Image=image,Parent=artworkPreloadRoot};
+  cached=new CachedArtwork{Image=image,Parent=artworkPreloadRoot,Asset=app.Asset,Fit=app.Fit};
   artworkCache.Add(key,cached);artworkViewsCreated++;
   image.ResourceReady+=(s,e)=>{
    if(image.LoadingStatus==ImageView.LoadingStatusType.Failed&&cached.Parent!=artworkPreloadRoot)cached.Parent.Add(NameLabel(app.Name,w,h));
