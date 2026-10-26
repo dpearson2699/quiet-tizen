@@ -84,6 +84,13 @@ def decode_pull(stdout):
     return data
 
 
+def script_command(script, args):
+    if len(script) > 45000:
+        raise ValueError("Script too large for the bounded command channel; split into phases.")
+    encoded = base64.b64encode(script).decode()
+    return f"printf '%s' {shlex.quote(encoded)} | base64 -d | /bin/sh -s -- " + shlex.join(args)
+
+
 def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
@@ -142,11 +149,7 @@ def main():
         private_path(args.local)
         command = pull_command(args.remote)
     elif args.script:
-        script = args.script.read_bytes()
-        if len(script) > 45000:
-            raise ValueError("Script too large for the bounded command channel; split into phases.")
-        encoded = base64.b64encode(script).decode()
-        command = f"printf '%s' {shlex.quote(encoded)} | /bin/sh -s -- " + shlex.join(args.arg)
+        command = script_command(args.script.read_bytes(), args.arg)
     else:
         if args.arg:
             raise ValueError("--arg requires --script.")

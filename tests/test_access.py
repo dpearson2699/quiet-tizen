@@ -2,13 +2,14 @@ import base64
 import gzip
 import hashlib
 from pathlib import Path
+import subprocess
 import sys
 import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
-from tv import check_identity, decode_pull, private_path, PROFILE
+from tv import check_identity, decode_pull, private_path, script_command, PROFILE
 
 
 class AccessTests(unittest.TestCase):
@@ -30,6 +31,19 @@ class AccessTests(unittest.TestCase):
             decode_pull("0" * 64 + "\n" + body)
         with self.assertRaises(Exception):
             decode_pull(digest + "\n" + body[:-12])
+
+    def test_script_runs_with_exact_arguments_and_status(self):
+        script = b'set -eu\nprintf "%s|" "$@"\necho\nprintf "$1" >&2\nexit 7\n'
+        args = ["home-01", "two words", "it's \"quoted\"", "line\nbreak", ""]
+        result = subprocess.run(["/bin/sh", "-c", script_command(script, args)],
+                                capture_output=True, text=True)
+        self.assertEqual(result.stdout, "|".join(args) + "|\n")
+        self.assertEqual(result.stderr, "home-01")
+        self.assertEqual(result.returncode, 7)
+        empty = subprocess.run(["/bin/sh", "-c", script_command(b"", [])], capture_output=True)
+        self.assertEqual((empty.returncode, empty.stdout), (0, b""))
+        with self.assertRaises(ValueError):
+            script_command(b"#" * 45001, [])
 
     def test_private_outputs_cannot_escape_checkout_private_directory(self):
         with self.assertRaises(ValueError):
