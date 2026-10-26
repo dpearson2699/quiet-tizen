@@ -808,8 +808,8 @@ public sealed class QuietHome : NUIApplication
  {
   IntPtr c;int r=app_control_create(out c);if(r!=0){ShowError("Could not open the app.");return;}
   try{r=app_control_set_app_id(c,id);if(r==0)r=app_control_set_operation(c,"http://tizen.org/appcontrol/operation/default");
-   // Samsung's home sends these when it resumes a recent app.
-   if(r==0&&resume){r=app_control_add_extra_data(c,"Entry","recent");if(r==0)r=app_control_add_extra_data(c,"SkipPIN","true");}
+   // Samsung's home marks a recent-app resume this way. It adds SkipPIN only for unlocked apps; Quiet Home never does, so a locked app still asks.
+   if(r==0&&resume)r=app_control_add_extra_data(c,"Entry","recent");
    if(r==0&&id=="org.tizen.menu"){
     if(menuItem!=null){
      r=app_control_add_extra_data(c,"menuitem",menuItem);

@@ -34,8 +34,9 @@ is not running or any linker call fails, the preview shows the app's tile
 instead. An input always shows its card art. The linker is a private Samsung
 library observed on the tested build; inspect it before reuse.
 
-Resume, or Back on Home, returns to that app with the extras Samsung's home
-sends for a recent app (`Entry=recent`, `SkipPIN=true`), or switches to that
+Resume, or Back on Home, returns to that app with the extra Samsung's home
+sends for a recent app (`Entry=recent`, never `SkipPIN`, so a locked app still
+asks for its PIN), or switches to that
 input. Until there is something to resume, Home says so and Back switches to
 the last input. Up from Resume reaches the pills and Down reaches the dock,
 where focus returns to the tile it last left. Back on any other page returns
