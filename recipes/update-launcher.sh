@@ -13,23 +13,29 @@ test -s "$S/package.tar.gz"
 test -d "$A/res/quiet-home"
 # Only update our own install: the live assembly must be the one this snapshot recorded.
 sha256sum -c "$D/installed-home.sha256"
-rm -rf "$S/unpacked"
+rm -rf "$S/unpacked" "$A/bin/BixbyPromotion.dll.new" "$A/res/quiet-home.new" "$A/res/quiet-home.old"
 mkdir "$S/unpacked"
 tar -xzf "$S/package.tar.gz" -C "$S/unpacked"
 test -s "$S/unpacked/BixbyPromotion.dll"
 test -s "$S/unpacked/quiet-home/apps.json"
-app_launcher -u 5001 -k com.samsung.tv.bixby-promotion || true
-cp "$S/unpacked/BixbyPromotion.dll" "$A/bin/BixbyPromotion.dll"
-chown 201:0 "$A/bin/BixbyPromotion.dll"
-chmod 644 "$A/bin/BixbyPromotion.dll"
-chsmack -a User::Pkg::com.samsung.tv.bixby-promotion::RO "$A/bin/BixbyPromotion.dll"
-rm -rf "$A/res/quiet-home"
-cp -R "$S/unpacked/quiet-home" "$A/res/"
-find "$A/res/quiet-home" -type d -exec chmod 755 {} \;
-find "$A/res/quiet-home" -type f -exec chmod 644 {} \;
-find "$A/res/quiet-home" -exec chown 201:0 {} \;
-find "$A/res/quiet-home" -exec chsmack -a User::Pkg::com.samsung.tv.bixby-promotion::RO {} \;
+# As the Home app, Quiet Home is restarted by the TV within a second of being
+# killed. Stage and label the new files beside the live ones and swap them in by
+# rename before the kill, so the restarted instance never finds a half-copied
+# folder; an empty fonts folder there left it in the fallback font.
+cp "$S/unpacked/BixbyPromotion.dll" "$A/bin/BixbyPromotion.dll.new"
+chown 201:0 "$A/bin/BixbyPromotion.dll.new"
+chmod 644 "$A/bin/BixbyPromotion.dll.new"
+chsmack -a User::Pkg::com.samsung.tv.bixby-promotion::RO "$A/bin/BixbyPromotion.dll.new"
+cp -R "$S/unpacked/quiet-home" "$A/res/quiet-home.new"
+find "$A/res/quiet-home.new" -type d -exec chmod 755 {} \;
+find "$A/res/quiet-home.new" -type f -exec chmod 644 {} \;
+find "$A/res/quiet-home.new" -exec chown 201:0 {} \;
+find "$A/res/quiet-home.new" -exec chsmack -a User::Pkg::com.samsung.tv.bixby-promotion::RO {} \;
+mv -f "$A/bin/BixbyPromotion.dll.new" "$A/bin/BixbyPromotion.dll"
 sha256sum "$A/bin/BixbyPromotion.dll" > "$D/installed-home.sha256"
-rm -rf "$S/unpacked"
+mv "$A/res/quiet-home" "$A/res/quiet-home.old"
+mv "$A/res/quiet-home.new" "$A/res/quiet-home"
+app_launcher -u 5001 -k com.samsung.tv.bixby-promotion || true
+rm -rf "$A/res/quiet-home.old" "$S/unpacked"
 app_launcher -u 5001 -s com.samsung.tv.bixby-promotion
 echo "Updated and launch requested. restore-launcher.sh $name still restores the original from $D."

@@ -145,7 +145,11 @@ To install a newer build over an existing Quiet Home, stage the new package
 and run the update recipe with the same snapshot name. It refuses unless the
 live assembly is the one that snapshot recorded, replaces only the assembly and
 `res/quiet-home`, and records the new hash so restoration still works. It does
-not change Home/startup.
+not change Home/startup. Once Quiet Home is the Home app, the TV restarts it
+about 0.35 seconds after it is killed, so the recipe labels the new files beside
+the live ones and swaps them in by rename before the kill. Copying after the
+kill let the restarted instance find an empty `fonts` folder; it then drew
+every label in the TV's fallback font while still reporting `font_loaded=True`.
 
 ```sh
 tv push .local/package.tar.gz package.tar.gz
