@@ -7,8 +7,9 @@ stack remain available underneath.
 
 Home leads with the app you were last in, shown live, with Resume as its one
 main action. Inputs and Settings are pills above it, and the dock of chosen
-apps runs along the bottom. Your Apps, Inputs and Settings are pages of their
-own, with Home, Apps, Inputs and Settings as pill tabs along the top. Every
+apps runs along the bottom, ending in an Apps tile. Apps, Inputs and Settings
+are pages of their own, with Home, Apps, Inputs and Settings as pill tabs along
+the top. Every
 page is flat black. The app tiles adapt Free My TV. All UI text here is
 English. See [attribution](../NOTICE.md).
 

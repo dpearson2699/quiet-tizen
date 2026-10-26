@@ -13,7 +13,7 @@ public sealed class QuietHome : NUIApplication
 {
  const string Root="/opt/usr/apps/com.samsung.tv.bixby-promotion/res/quiet-home/";
  const string StateFile="/tmp/quiet-home-state.txt";
- // App tiles match Samsung's home: one rounded square size on the dock and in Your Apps.
+ // App tiles match Samsung's home: one rounded square size on the dock and in Apps.
  // Samsung's home app row (applist02): 14-unit squircles, 2-unit gaps, 1.2x focus; 8 px per unit at 1080p.
  const int Tile=112,TileGap=16,DockPitch=Tile+TileGap,GridPitchX=230,GridPitchY=190;
  const float TileFocusScale=1.2f,TileSquareness=.7f;
@@ -234,7 +234,7 @@ public sealed class QuietHome : NUIApplication
   }
   var docked=DockApps();
   for(int i=0;i<docked.Count;i++)Dock(docked[i].Name,"app:"+docked[i].Id,i);
-  Dock("Your Apps","page:"+AppsPage,docked.Count);
+  Dock(PageNames[AppsPage],"page:"+AppsPage,docked.Count);
   tileName=Text("",0,984,TileNameW,32,24,homeInk,"Semibold");tileName.HorizontalAlignment=HorizontalAlignment.Center;
   pageHint=Text("Hold Select for options",1124,986,700,28,20,dim);pageHint.HorizontalAlignment=HorizontalAlignment.End;
   moveDim=Add(new View{Size2D=new Size2D(1920,1080),BackgroundColor=new Color(0,0,0,.5f),Opacity=0});
