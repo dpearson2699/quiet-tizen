@@ -36,7 +36,7 @@ public sealed class InstalledApp
 
 public static class AppLibrary
 {
- public const int Columns=5, Rows=3, PageSize=Columns*Rows;
+ public const int Columns=8, Rows=4, PageSize=Columns*Rows;
  // Samsung's preinstalled media apps that the owner treats as their own. Every
  // other system app (settings panels, OOBE, ads, art templates) stays hidden.
  static readonly HashSet<string> MediaApps=new HashSet<string>{
@@ -53,11 +53,11 @@ public static class AppLibrary
   return a.Type=="webapp"&&dot==10;
  }
 
- static bool HasArt(LibraryApp app)=>!string.IsNullOrEmpty(app.Asset)&&!app.Asset.StartsWith("placeholders/");
 
  // The list Quiet Home shows: what is installed, curated favorites first in
- // catalog order, the rest by name. Curated publisher art wins; otherwise the
- // TV's own icon. With no installed list, the curated catalog stands alone.
+ // catalog order, the rest by name. Every app draws as the TV's own square
+ // tile, like Samsung's home; curated art stands in only when the TV has none.
+ // With no installed list, the curated catalog stands alone.
  public static List<LibraryApp> Merge(List<LibraryApp> curated,IEnumerable<InstalledApp> installed)
  {
   curated??=new List<LibraryApp>();
@@ -71,7 +71,7 @@ public static class AppLibrary
   {
    if(app.Utility){utility=app;continue;}
    if(!visible.TryGetValue(app.Id,out var tv)||!names.Add(app.Name))continue;
-   result.Add(HasArt(app)||string.IsNullOrEmpty(tv.IconPath)?WithStore(app,tv):FromTv(tv,app.Name,app.Description));
+   result.Add(string.IsNullOrEmpty(tv.IconPath)?WithStore(app,tv):FromTv(tv,app.Name,app.Description));
   }
   var rest=new List<InstalledApp>(visible.Values);
   rest.Sort((x,y)=>string.Compare(Clean(x.Label),Clean(y.Label),StringComparison.OrdinalIgnoreCase));
@@ -93,7 +93,7 @@ public static class AppLibrary
  }
 
  static LibraryApp FromTv(InstalledApp tv,string name,string description)=>new LibraryApp{
-  Name=name,Id=tv.Id,Asset=tv.IconPath??"",Description=description??"",Fit=string.IsNullOrEmpty(tv.IconPath)?"name":"icon",Background="#1F2329",Width=512,Height=512,
+  Name=name,Id=tv.Id,Asset=tv.IconPath??"",Description=description??"",Fit=string.IsNullOrEmpty(tv.IconPath)?"name":"tile",Background="#1F2329",Width=512,Height=512,
   StoreId=tv.StoreId??"",Removable=tv.Removable};
 
  static LibraryApp WithStore(LibraryApp app,InstalledApp tv)=>new LibraryApp{
@@ -162,7 +162,7 @@ public static class AppLibrary
 // edit it. Edits return new lists so a failed save never leaves a half change.
 public static class HomeDock
 {
- public const int Max=5,Default=3;
+ public const int Max=10,Default=3;
  public static List<LibraryApp> Resolve(List<string> saved,List<LibraryApp> library)
  {
   var apps=library.FindAll(a=>!a.Utility);
