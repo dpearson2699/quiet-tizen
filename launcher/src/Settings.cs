@@ -45,7 +45,7 @@ public static class SettingsCatalog
   new SettingRow{Id="game-mode", Label="Game mode", Kind=SettingKind.Choice, Gap=true, About="Cuts the delay between your controller and the screen."},
   new SettingRow{Id="controllers", Label="Controllers", Kind=SettingKind.Link, MenuItem="add-bluetooth-keyboard", Shows="Pair", Opens="Samsung's pairing screen",
    About="To pair a DualSense, hold PS and Create until the light blinks, then select this."},
-  new SettingRow{Id="network", Label="Network", Kind=SettingKind.Link, Gap=true, MenuItem="networksettings", Shows="Wi-Fi", Opens="Samsung's network settings",
+  new SettingRow{Id="network", Label="Network", Kind=SettingKind.Link, Gap=true, MenuItem="networksettings", Opens="Samsung's network settings",
    About="Opens Samsung's Wi-Fi and network settings."},
   new SettingRow{Id="all", Label="All settings", Kind=SettingKind.Link, Shows="Samsung", Opens="Samsung's settings menu",
    About="Opens Samsung's own settings menu, for everything not listed here."}};
@@ -76,6 +76,10 @@ public static class SettingsCatalog
   if (at < 0) return options[0].Value;
   return options[(at + direction % options.Count + options.Count) % options.Count].Value;
  }
+
+ // Tizen's memory/dnet/status: 0 off, 1 cellular, 2 Wi-Fi, 3 Ethernet, 4 Bluetooth, 5 proxy.
+ static readonly Dictionary<int,string> NetworkNames = new Dictionary<int,string>{{0,"Not connected"},{2,"Wi-Fi"},{3,"Wired"}};
+ public static string NetworkName(int status) => NetworkNames.TryGetValue(status, out var name) ? name : "Connected";
 
  public static double Slide(double value, double min, double max, double step, int direction) => Math.Max(min, Math.Min(max, value + direction * step));
 

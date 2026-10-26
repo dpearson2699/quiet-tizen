@@ -289,7 +289,7 @@ public sealed class QuietHome : NUIApplication
  bool Available(SettingRow row)=>row.Kind==SettingKind.Link||(row.Kind==SettingKind.Volume?currentVolume>=0:SettingOf(row.Id).Available);
  string SettingText(SettingRow row)
  {
-  if(row.Kind==SettingKind.Link)return row.Shows;
+  if(row.Kind==SettingKind.Link){var shown=SettingOf(row.Id).Name;return shown!=""?shown:row.Shows??"";}
   if(row.Kind==SettingKind.Volume)return currentVolume<0?"Unavailable":currentMute==1?"Muted":currentVolume.ToString();
   var s=SettingOf(row.Id);return s.Name!=""?s.Name:"Unavailable";
  }
@@ -835,7 +835,7 @@ public sealed class QuietHome : NUIApplication
  // reports only visible, yet takes them. Every change is read back anyway.
  void RefreshSettings()
  {
-  var stopwatch=Stopwatch.StartNew();RefreshVolume();
+  var stopwatch=Stopwatch.StartNew();RefreshVolume();RefreshNetwork();
   foreach(var row in SettingsCatalog.Rows){
    if(row.Kind!=SettingKind.Choice&&row.Kind!=SettingKind.Slider)continue;
    var s=new SettingState();
@@ -854,6 +854,12 @@ public sealed class QuietHome : NUIApplication
    settingStates[row.Id]=s;
   }
   settingsMilliseconds=stopwatch.ElapsedMilliseconds;
+ }
+ void RefreshNetwork()
+ {
+  var s=new SettingState{Available=true};
+  try{if(vconf_get_int("memory/dnet/status",out int status)==0){s.Value=status.ToString();s.Name=SettingsCatalog.NetworkName(status);}}catch{}
+  settingStates["network"]=s;
  }
  void AdjustSetting(int direction)
  {
