@@ -173,7 +173,7 @@ public sealed class QuietHome : NUIApplication
  TextLabel Text(string text,int x,int y,int w,int h,float size,Color color,string face="Medium")
  {return (TextLabel)Add(Label(text,x,y,w,h,size,color,face));}
  TextLabel Label(string text,int x,int y,int w,int h,float size,Color color,string face="Medium")
- {return new TextLabel{Text=text,Position2D=new Position2D(x,y),Size2D=new Size2D(w,h),PixelSize=size,FontFamily="Quiet Inter "+face,TextColor=color,VerticalAlignment=VerticalAlignment.Center};}
+ {return new TextLabel{Text=text,Position2D=new Position2D(x,y),Size2D=new Size2D(w,h),PixelSize=size,FontFamily="Quiet Geist "+face,TextColor=color,VerticalAlignment=VerticalAlignment.Center};}
  void BuildPage()
  {
   var stopwatch=Stopwatch.StartNew();
@@ -185,7 +185,7 @@ public sealed class QuietHome : NUIApplication
   foreach(var v in scene){Window.Default.Remove(v);v.Dispose();}scene.Clear();slots.Clear();tabs=null;
   if(page==HomePage)BuildHome();
   else{
-   Text(page==AppsPage?"Your Apps":page==InputsPage?"Inputs":"Quick Settings",76,55,1350,100,76,ink,"Display");
+   Text(page==AppsPage?"Your Apps":page==InputsPage?"Inputs":"Quick Settings",76,55,1350,100,76,ink,"Semibold");
    tabs=new TextLabel[PageNames.Length];int[] tx={54,218,363,530};int[] tw={150,131,153,182};
    for(int i=0;i<tabs.Length;i++){tabs[i]=Text(PageNames[i],tx[i],158,tw[i],68,30,muted);tabs[i].HorizontalAlignment=HorizontalAlignment.Center;}
    clock=Text(DateTime.Now.ToString("h:mm tt"),1540,170,300,45,24,muted);clock.HorizontalAlignment=HorizontalAlignment.End;
@@ -234,7 +234,7 @@ public sealed class QuietHome : NUIApplication
    ring.BorderlineWidth=4;ring.BorderlineColor=white;ring.BorderlineOffset=-1;ring.Opacity=0;
    Still();
    if(recent is RecentItem.App){var hole=preview.Hole();if(hole!=null)Add(hole);}
-   var name=Text(RecentName(),96,550,512,150,60,homeInk,"Display");name.MultiLine=true;name.Ellipsis=true;name.VerticalAlignment=VerticalAlignment.Bottom;
+   var name=Text(RecentName(),96,550,512,150,60,homeInk,"Semibold");name.MultiLine=true;name.Ellipsis=true;name.VerticalAlignment=VerticalAlignment.Bottom;
    var resume=Card(96,732,208,60,raised,30);
    var play=new ImageView{ResourceUrl=Root+"symbol-play.svg",Position2D=new Position2D(24,18),Size2D=new Size2D(24,24),Color=homeInk};resume.Add(play);
    var label=Label("Resume",60,0,140,60,30,homeInk,"Semibold");resume.Add(label);
@@ -326,7 +326,7 @@ public sealed class QuietHome : NUIApplication
    card.Add(new View{Position2D=new Position2D(w/2-2,h/2-20),Size2D=new Size2D(4,40),BackgroundColor=ink});
   }
  }
- TextLabel NameLabel(string name,int w,int h)=>new TextLabel{Text=name,Size2D=new Size2D(w,h),PixelSize=h/5f,FontFamily="Quiet Inter Semibold",TextColor=white,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,MultiLine=true};
+ TextLabel NameLabel(string name,int w,int h)=>new TextLabel{Text=name,Size2D=new Size2D(w,h),PixelSize=h/5f,FontFamily="Quiet Geist Semibold",TextColor=white,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,MultiLine=true};
  void PreloadArtwork()
  {
   // Keep the real image views alive on the scene; moving between pages never
@@ -432,7 +432,7 @@ public sealed class QuietHome : NUIApplication
   var card=Card(x,y,w,h,clear,24);
   card.Add(new ImageView{ResourceUrl=Root+"quick-"+icon+".svg",Size2D=new Size2D(w,h)});
   card.Add(Label(name,26,25,348,42,29,white,"Semibold"));
-  var value=Label("",26,151,358,56,38,white,"Display");card.Add(value);
+  var value=Label("",26,151,358,56,38,white,"Semibold");card.Add(value);
   card.Add(Label(description,26,226,370,34,20,new Color(.95f,.96f,1,1)));
   slots.Add(new Slot{Kind=SlotKind.Setting,Card=card,Label=value,Name=name,Action=action,Description=description,Row=row,X=x,Y=y,W=w,H=h});
  }
@@ -512,7 +512,7 @@ public sealed class QuietHome : NUIApplication
  {
   if(focusAnimation!=null){focusAnimation.Stop();focusAnimation.Dispose();focusAnimation=null;}
   if(animate){focusAnimation=new Animation(180);if(page==HomePage)focusAnimation.DefaultAlphaFunction=new AlphaFunction(new Vector2(.22f,1),new Vector2(.36f,1));}
-  if(tabs!=null)for(int i=0;i<tabs.Length;i++){tabs[i].TextColor=i==page?ink:muted;tabs[i].FontFamily="Quiet Inter "+(i==page?"Semibold":"Medium");tabs[i].BackgroundColor=onTabs&&i==page?new Color(1,1,1,.14f):new Color(0,0,0,0);tabs[i].CornerRadius=new Vector4(34,34,34,34);}
+  if(tabs!=null)for(int i=0;i<tabs.Length;i++){tabs[i].TextColor=i==page?ink:muted;tabs[i].FontFamily="Quiet Geist "+(i==page?"Semibold":"Medium");tabs[i].BackgroundColor=onTabs&&i==page?new Color(1,1,1,.14f):new Color(0,0,0,0);tabs[i].CornerRadius=new Vector4(34,34,34,34);}
   for(int i=0;i<slots.Count;i++){
    var s=slots[i];bool f=!onTabs&&selected==i;
    // Cards in the first row lift and carry a hairline when focused.
@@ -528,7 +528,7 @@ public sealed class QuietHome : NUIApplication
     s.Card.BackgroundColor=f?white:s.Kind==SlotKind.Pill?clear:raised;
     var c=f?black:s.Kind==SlotKind.Pill?dim:homeInk;s.Icon.Color=c;s.Label.TextColor=c;
    }else if(s.Label!=null&&s.Kind!=SlotKind.Setting){
-    s.Label.FontFamily="Quiet Inter "+(f?"Semibold":"Medium");
+    s.Label.FontFamily="Quiet Geist "+(f?"Semibold":"Medium");
     if(s.Kind==SlotKind.Tile)s.Label.TextColor=f?ink:muted;
    }
    if(f)s.Card.RaiseToTop();
@@ -651,7 +651,7 @@ public sealed class QuietHome : NUIApplication
  void ClearOverlay(){foreach(var v in overlay){Window.Default.Remove(v);v.Dispose();}overlay.Clear();menuRows.Clear();menuLabels.Clear();}
  void UpdateMenuFocus()
  {
-  for(int i=0;i<menuRows.Count;i++){bool f=i==menuIndex;menuRows[i].BackgroundColor=f?accent:new Color(0,0,0,0);menuLabels[i].TextColor=f?white:ink;menuLabels[i].FontFamily="Quiet Inter "+(f?"Semibold":"Medium");}
+  for(int i=0;i<menuRows.Count;i++){bool f=i==menuIndex;menuRows[i].BackgroundColor=f?accent:new Color(0,0,0,0);menuLabels[i].TextColor=f?white:ink;menuLabels[i].FontFamily="Quiet Geist "+(f?"Semibold":"Medium");}
  }
  void CloseMenu()
  {
