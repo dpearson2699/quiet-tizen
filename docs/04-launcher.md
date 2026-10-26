@@ -7,10 +7,10 @@ stack remain available underneath.
 
 Home leads with the app you were last in, shown live, with Resume as its one
 main action. Inputs and Settings are pills above it, and the dock of chosen
-apps runs along the bottom. Your Apps, Inputs and Quick Settings are pages of
-their own, each with a title and a Home, Apps, Inputs, Settings tab strip.
-Every page is flat black. The app tiles and quick settings cards adapt Free My
-TV. All UI text here is English. See [attribution](../NOTICE.md).
+apps runs along the bottom. Your Apps, Inputs and Settings are pages of their
+own, with Home, Apps, Inputs and Settings as pill tabs along the top. Every
+page is flat black. The app tiles adapt Free My TV. All UI text here is
+English. See [attribution](../NOTICE.md).
 
 ## How Home works
 
@@ -28,8 +28,9 @@ The preview is the app itself, live. Like Samsung's home, Quiet Home asks the
 virtual screen linker (`/usr/lib/libvirtualscreen-linker.so`) to scale the
 app's own window into the preview area beneath Quiet Home's window, and leaves
 that area of its own window transparent so the app shows through. Quiet Home
-never reads or stores the app's picture. The app is let go when another app
-comes to the front, when you leave Home and when Quiet Home closes. If the app
+never reads or stores the app's picture. Settings shows the same app, smaller,
+beside its list. The app is let go when another app comes to the front, when
+you leave Home and Settings, and when Quiet Home closes. If the app
 is not running or any linker call fails, the preview shows the app's tile
 instead. An input always shows its card art. The linker is a private Samsung
 library observed on the tested build; inspect it before reuse.
@@ -157,8 +158,8 @@ Verify visibly:
 - Home shows the recent app live, and Resume and Back return to it in full
   screen.
 - HDMI cards switch the intended input, with picture and audio.
-- Volume/mute and applicable quick settings work.
-- Native Advanced and Network settings still open.
+- Each settings row changes the TV and reads back the same value.
+- All settings and Network still open Samsung's own screens.
 - Chosen app shortcuts launch the correct installed apps.
 - The Controllers shortcut reaches the Bluetooth device list.
 
@@ -186,10 +187,23 @@ on the original TV; an OS update can change routing.
 
 ## Replace the slow settings/sidebar path
 
-The quick settings page handles volume, mute, brightness, Game Mode and
-sleep timer with native APIs. Availability is checked for the current input.
-Advanced settings, network setup and Bluetooth pairing still use Samsung's
-native menu on demand.
+The Settings page lists picture mode, AI picture (Samsung's Intelligent
+Mode), brightness, color tone, motion smoothing (Picture Clarity), volume,
+sound mode, captions, sleep timer, energy saving and Game Mode. Left and Right
+change the focused row at once, and the recent app beside the list shows the
+result. `launcher/src/Settings.cs` holds the rows and `tests/SettingsTests.cs`
+checks them.
+
+Each row is a Samsung settings item, read through `libsettings-api.so`. The
+TV lists an item's options as `value,name;` pairs and repeats a name for each
+source type, so the page shows each name once and drops the options the TV
+marks unavailable. The tested build reported picture mode as disabled yet
+accepted changes, so a row stays open while the TV reports it either visible
+or enabled. Every change is read back. A row the TV is not offering, such as
+Game Mode while an app plays, shows its value and says so. Sound output is
+left out on purpose. Controllers, Network and All settings open Samsung's own
+screens. Item IDs and option values are observations for the tested build;
+read them again before reuse.
 
 The small QuickLaunch bridge exits on vendor `launch_type=preload` requests.
 For interactive requests it opens Quiet Home's settings page and exits.
