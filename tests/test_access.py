@@ -9,18 +9,22 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
-from tv import check_identity, decode_pull, private_path, script_command, PROFILE
+from tv import check_identity, decode_pull, private_path, script_command, PROFILES
 
 
 class AccessTests(unittest.TestCase):
     def test_target_identity_gate(self):
-        check_identity(PROFILE["model"], PROFILE["firmware"])
+        u8000f, s95c = PROFILES["UN75U8000FFXZA"], PROFILES["QN55S95CAFXZA"]
+        for profile in (u8000f, s95c):
+            check_identity(profile["model"], profile["firmware"])
+            with self.assertRaises(ValueError):
+                check_identity("ANOTHER_MODEL", profile["firmware"])
+            with self.assertRaises(ValueError):
+                check_identity(profile["model"], "ANOTHER_FIRMWARE")
+            with self.assertRaises(ValueError):
+                check_identity(profile["model"], None)
         with self.assertRaises(ValueError):
-            check_identity("ANOTHER_MODEL", PROFILE["firmware"])
-        with self.assertRaises(ValueError):
-            check_identity(PROFILE["model"], "ANOTHER_FIRMWARE")
-        with self.assertRaises(ValueError):
-            check_identity(PROFILE["model"], None)
+            check_identity(s95c["model"], u8000f["firmware"])
 
     def test_transfer_integrity(self):
         payload = b"synthetic contents only" * 100
