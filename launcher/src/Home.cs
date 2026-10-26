@@ -17,6 +17,8 @@ public sealed class QuietHome : NUIApplication
  // Samsung's home app row (applist02): 14-unit squircles, 2-unit gaps, 1.2x focus; 8 px per unit at 1080p.
  const int Tile=112,TileGap=16,DockPitch=Tile+TileGap,GridPitchX=230,GridPitchY=190;
  const float TileFocusScale=1.2f,TileSquareness=.7f;
+ // Samsung's reorder (FLUX NList): a 12-unit gap parts the row, 4-unit arrows flank the app, each slide runs 300 ms on FLUX's basic curve.
+ const int MoveGap=96,MoveArrow=32;
  const string FocusStroke="/usr/apps/com.samsung.tv.theme-resource/shared/res/PRINCIPLE/FLUX/i_focus_stroke/i_focus_stroke_squircle_13.svg";
  sealed class Slot { public View Card,Shadow,FocusRing; public TextLabel Label; public string Name,Action,Description; public int Row,X,Y,W,H; }
  sealed class CachedArtwork { public ImageView Image; public View Parent; public string Asset,Fit; }
@@ -33,6 +35,8 @@ public sealed class QuietHome : NUIApplication
  // Move mode: the dock app being repositioned and its unsaved order.
  string moving;
  List<string> moveIds;
+ View moveDim;
+ View[] moveArrows;
  List<string> menuOptions;
  int menuIndex;
  LibraryApp menuApp;
@@ -52,8 +56,8 @@ public sealed class QuietHome : NUIApplication
  string libraryError="";
  TextLabel clock, notice, detail;
  TextLabel[] tabs;
- TextLabel toolbarHint;
- Animation focusAnimation;
+ TextLabel toolbarHint,pageHint;
+ Animation focusAnimation,moveAnimation;
  bool fontLoaded;
  Tizen.NUI.Timer clockTimer;
  int page, selected, area=1, lastSource;
@@ -127,6 +131,8 @@ public sealed class QuietHome : NUIApplication
  {
   var stopwatch=Stopwatch.StartNew();
   if(focusAnimation!=null){focusAnimation.Stop();focusAnimation.Dispose();focusAnimation=null;}
+  if(moveAnimation!=null){moveAnimation.Stop();moveAnimation.Dispose();moveAnimation=null;}
+  DropArrows();moving=null;moveIds=null;
   ParkArtwork();pageArtworkCold=0;
   foreach(var v in scene){Window.Default.Remove(v);v.Dispose();}scene.Clear();slots.Clear();
   Add(new ImageView{ResourceUrl=Root+"free-background.svg",Size2D=new Size2D(1920,1080)});
@@ -157,9 +163,10 @@ public sealed class QuietHome : NUIApplication
   }
   Toolbar("Apps","page:1","apps",0);Toolbar("Inputs","page:0","hdmi",1);Toolbar("Settings","page:2","settings",2);
   toolbarHint=Text("",1530,170,310,45,24,ink);toolbarHint.HorizontalAlignment=HorizontalAlignment.End;
+  moveDim=page==0?Add(new View{Size2D=new Size2D(1920,1080),BackgroundColor=new Color(0,0,0,.5f),Opacity=0}):null;
   detail=Text("",80,1030,1320,35,20,muted);
   notice=Text("",80,1008,1760,34,22,accent);
-  var hint=Text(page==1?(AppLibrary.PageCount(library.Count)<=1?"Hold Select for options · Back to Home":libraryPage+1<AppLibrary.PageCount(library.Count)?"Hold Select for options · Down for more":"Hold Select for options · Up for previous"):page==0?(moving!=null?"":"Hold Select on an app for options · Back to input"):"Back to input",1110,1030,730,35,20,muted);hint.HorizontalAlignment=HorizontalAlignment.End;
+  pageHint=Text(page==1?(AppLibrary.PageCount(library.Count)<=1?"Hold Select for options · Back to Home":libraryPage+1<AppLibrary.PageCount(library.Count)?"Hold Select for options · Down for more":"Hold Select for options · Up for previous"):page==0?"Hold Select on an app for options · Back to input":"Back to input",1110,1030,730,35,20,muted);pageHint.HorizontalAlignment=HorizontalAlignment.End;
   selected=Math.Max(0,Math.Min(selected,slots.Count-1));UpdateFocus(false);
   buildMilliseconds=stopwatch.ElapsedMilliseconds;WriteState("page_ready");
  }
@@ -229,7 +236,7 @@ public sealed class QuietHome : NUIApplication
   Window.Default.Add(artworkPreloadRoot);
   foreach(var app in library)if(AppLibrary.HasImage(app))GetArtwork(app,Tile,Tile);
  }
- List<LibraryApp> DockApps()=>HomeDock.Resolve(moving!=null?moveIds:dockIds,library);
+ List<LibraryApp> DockApps()=>HomeDock.Resolve(dockIds,library);
  List<string> DockIds()=>DockApps().ConvertAll(a=>a.Id);
  // The installed-app query is asynchronous; a main-loop timer applies its result
  // so every scene change stays on the UI thread.
@@ -359,9 +366,10 @@ public sealed class QuietHome : NUIApplication
   var sub=Text(description,x,760,w,36,24,muted);sub.HorizontalAlignment=HorizontalAlignment.Center;
   slots.Add(new Slot{Card=card,Shadow=shadow,Label=caption,Name=label,Action=action,Description=description,Row=0,X=x,Y=y,W=w,H=h});
  }
+ int DockX(int n,int count,int at)=>(1920-count*DockPitch+TileGap)/2+n*DockPitch+(at<0||n==at?0:n<at?-MoveGap/2:MoveGap/2);
  void Dock(string label,string action,int n,int count)
  {
-  int x=(1920-count*DockPitch+TileGap)/2+n*DockPitch,y=857;View card;
+  int x=DockX(n,count,-1),y=857;View card;
   var app=action.StartsWith("app:")?library.Find(a=>a.Id==action.Substring(4)):null;
   if(app!=null)card=TileCard(x,y,app);
   else{
@@ -413,9 +421,6 @@ public sealed class QuietHome : NUIApplication
    detail.Text="Your everyday controls";
   }
   if(editing!="")detail.Text="Left / Right to adjust "+editing+" · Select or Back to finish";
-  if(moving!=null&&area==2&&selected<slots.Count&&slots[selected].Action=="app:"+moving){
-   slots[selected].Card.BorderlineWidth=5;slots[selected].Card.BorderlineColor=accent;slots[selected].FocusRing.Opacity=0;
-   detail.Text="Left / Right to move · Select to keep · Back to cancel";}
   WriteState("focus");
  }
  void OnKey(object sender,Window.KeyEventArgs e)
@@ -536,36 +541,71 @@ public sealed class QuietHome : NUIApplication
   else if(option=="move")StartMove(app);
   else if(option=="confirm-delete")StartUninstall(app);
  }
- // Like Samsung's own reorder: Left/Right slide the app one slot per press,
- // Select keeps the new order and Back puts it back.
+ // Like Samsung's own reorder: the dock parts around the app, Left/Right slide it
+ // one slot per press, Select keeps the new order and Back puts it back.
  void StartMove(LibraryApp app)
  {
-  moveIds=DockIds();moving=app.Id;ShowMoving();WriteState("move_started:"+app.Id);
+  int at=slots.FindIndex(s=>s.Row==1&&s.Action=="app:"+app.Id);if(at<0)return;
+  area=2;selected=at;UpdateFocus(false);notice.Text="";
+  moveIds=DockIds();moving=app.Id;
+  // Like Samsung's dim, everything but the dock row and its instructions sits under it.
+  moveDim?.RaiseToTop();foreach(var i in Row(1))slots[i].Card.RaiseToTop();detail.RaiseToTop();notice.RaiseToTop();
+  PlaceDock();WriteState("move_started:"+app.Id);
  }
  void MoveKey(string k)
  {
-  if(k=="Left"||k=="Right"){var next=HomeDock.Move(moveIds,moving,k=="Left"?-1:1);if(string.Join("|",next)!=string.Join("|",moveIds)){moveIds=next;ShowMoving();}}
+  if(k=="Left"||k=="Right"){var next=HomeDock.Move(moveIds,moving,k=="Left"?-1:1);if(string.Join("|",next)!=string.Join("|",moveIds)){moveIds=next;ArrangeDock(moveIds);PlaceDock();WriteState("moving:"+string.Join("|",moveIds));}}
   else if(k=="Return"||k=="KP_Enter")EndMove(true);
   else if(k=="XF86Back"||k=="Back"||k=="Escape"||k=="XF86Exit")EndMove(false);
  }
- void ShowMoving()
+ // Dock navigation reads its order from slots, so a move reorders them; focus follows its tile.
+ void ArrangeDock(List<string> ids)
  {
-  BuildPage();int at=slots.FindIndex(s=>s.Action=="app:"+moving);
-  if(at>=0){area=2;selected=at;UpdateFocus(false);}
-  WriteState("moving:"+string.Join("|",moveIds));
+  var dock=Row(1);var old=dock.ConvertAll(i=>slots[i]);var focus=slots[selected];
+  var order=new List<Slot>();foreach(var id in ids){var s=old.Find(x=>x.Action=="app:"+id);if(s!=null)order.Add(s);}
+  order.AddRange(old.FindAll(s=>!order.Contains(s)));
+  for(int n=0;n<dock.Count;n++)slots[dock[n]]=order[n];selected=slots.IndexOf(focus);
  }
+ // Stopping the previous slide leaves each tile where it is, so a press mid-slide continues from there.
+ void PlaceDock()
+ {
+  if(moveAnimation!=null){moveAnimation.Stop();moveAnimation.Dispose();moveAnimation=null;}
+  moveAnimation=new Animation(300){DefaultAlphaFunction=new AlphaFunction(new Vector2(.3f,0),new Vector2(.15f,1))};
+  var dock=Row(1);int at=moving==null?-1:dock.FindIndex(i=>slots[i].Action=="app:"+moving);
+  for(int n=0;n<dock.Count;n++){
+   var s=slots[dock[n]];s.X=DockX(n,dock.Count,at);
+   moveAnimation.AnimateTo(s.Card,"Position",new Position(s.X+s.W/2f,s.Y+s.H/2f,0));
+   moveAnimation.AnimateTo(s.Card,"Opacity",at>=0&&!s.Action.StartsWith("app:")?.1f:1f);
+  }
+  if(moveDim!=null)moveAnimation.AnimateTo(moveDim,"Opacity",at>=0?1f:0f);
+  if(at<0)DropArrows();
+  else{
+   var card=slots[dock[at]].Card;
+   if(moveArrows==null){moveArrows=new View[2];for(int i=0;i<2;i++){moveArrows[i]=new ImageView{ResourceUrl=Root+"move-arrow.svg",Size2D=new Size2D(MoveArrow,MoveArrow),PivotPoint=new Position(.5f,.5f,.5f),PositionUsesPivotPoint=true,Position=new Position(i==0?-MoveArrow/2:Tile+MoveArrow/2,Tile/2,0),Orientation=new Rotation(new Radian(new Degree(i*180)),PositionAxis.Z)};card.Add(moveArrows[i]);}}
+   int p=moveIds.IndexOf(moving);if(p>0)moveArrows[0].Show();else moveArrows[0].Hide();if(p<moveIds.Count-1)moveArrows[1].Show();else moveArrows[1].Hide();
+  }
+  detail.Text=at>=0?"Left / Right to move · Select to keep · Back to cancel":slots[selected].Name;pageHint.Opacity=at>=0?0:1;
+  moveAnimation.Play();
+ }
+ void DropArrows(){if(moveArrows!=null)foreach(var a in moveArrows){a.Unparent();a.Dispose();}moveArrows=null;}
  void EndMove(bool keep)
  {
-  string id=moving;var ids=moveIds;moving=null;moveIds=null;pendingBuild=false;
-  if(keep)SaveDock(ids,id,"");
-  else if(page==0){BuildPage();int at=slots.FindIndex(s=>s.Action=="app:"+id);if(at>=0){area=2;selected=at;UpdateFocus(false);}}
-  WriteState(keep?"move_saved":"move_cancelled");
+  var ids=moveIds;moving=null;moveIds=null;
+  bool saved=keep&&WriteDock(ids);
+  if(!saved)ArrangeDock(DockIds());
+  PlaceDock();
+  if(pendingBuild){pendingBuild=false;BuildPage();}
+  WriteState(saved?"move_saved":"move_cancelled");
+ }
+ bool WriteDock(List<string> ids)
+ {
+  try{File.WriteAllText(DockFile,HomeDock.Serialize(ids));}
+  catch(Exception ex){ShowError("Home could not be saved.");WriteState("dock_save_failed:"+ex.GetType().Name);return false;}
+  dockIds=ids;return true;
  }
  void SaveDock(List<string> ids,string focusId,string message)
  {
-  try{File.WriteAllText(DockFile,HomeDock.Serialize(ids));}
-  catch(Exception ex){ShowError("Home could not be saved.");WriteState("dock_save_failed:"+ex.GetType().Name);return;}
-  dockIds=ids;
+  if(!WriteDock(ids))return;
   if(page==0){
    BuildPage();int at=focusId==null?-1:slots.FindIndex(s=>s.Action=="app:"+focusId);
    var dock=Row(1);area=2;selected=at>=0?at:dock.Count>0?dock[0]:selected;UpdateFocus(false);
