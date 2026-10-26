@@ -83,7 +83,7 @@ static class LibraryTests
   var manyApps = many.ConvertAll(App);
   Equal(HomeDock.Max.ToString(), HomeDock.Resolve(many, manyApps).Count.ToString(), "dock stops at its limit");
   Equal("10", HomeDock.Max.ToString(), "dock fits ten app tiles");
-  Equal("8x4", AppLibrary.Columns + "x" + AppLibrary.Rows, "Your Apps shows an eight by four grid of tiles");
+  Equal("8x4", AppLibrary.Columns + "x" + AppLibrary.Rows, "Apps shows an eight by four grid of tiles");
   var ids = new List<string>{"a","b","c"};
   Equal("a,b,c,d", string.Join(",", HomeDock.Add(ids, "d")), "add appends");
   Equal("a,b,c", string.Join(",", ids), "edits return a new list");
@@ -102,7 +102,7 @@ static class LibraryTests
   Equal("open,move,remove,delete", string.Join(",", AppOptions.For(removable, ids, true)), "docked app on Home");
   Equal("open,move,remove", string.Join(",", AppOptions.For(App("a"), ids, true)), "no store id, no delete");
   Equal("open,remove", string.Join(",", AppOptions.For(App("a"), new List<string>{"a"}, true)), "a lone dock app has nowhere to move");
-  Equal("open,remove,delete", string.Join(",", AppOptions.For(removable, ids, false)), "docked app in Your Apps");
+  Equal("open,remove,delete", string.Join(",", AppOptions.For(removable, ids, false)), "docked app in Apps");
   Equal("open,add", string.Join(",", AppOptions.For(App("d"), ids, false)), "undocked app can be added");
   Equal("open", string.Join(",", AppOptions.For(App("f"), full, false)), "full dock offers no add");
 
