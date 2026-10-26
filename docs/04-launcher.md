@@ -66,7 +66,8 @@ Selecting an app opens it when Select is released. Holding Select opens its
 options: Open, Add to Home or Remove from Home, Move (on the Home dock) and
 Delete app when Samsung's app service marks it removable. Move works like
 Samsung's reorder: Left and Right slide the app, Select keeps the order and
-Back cancels. The dock holds up to five apps; until it is edited it shows the
+Back cancels. Apps draw as the square tiles Samsung's home uses. The dock holds
+up to ten apps; until it is edited it shows the
 first three, and the edited order is saved in the app's data directory as
 `dock.json`. Delete asks for confirmation, with Cancel focused, then uses
 Samsung's uninstall.
