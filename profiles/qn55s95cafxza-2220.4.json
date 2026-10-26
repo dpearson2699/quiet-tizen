@@ -1,0 +1,11 @@
+{
+  "profile_version": 1,
+  "model": "QN55S95CAFXZA",
+  "firmware": "T-PTMCAKUC-0090-2220.4",
+  "os": "Tizen 9.0",
+  "kernel": "Linux 5.4.77 ARMv7",
+  "runtime": "6.0.9",
+  "registry": "/opt/dbspace/.pkgmgr_parser.db",
+  "scope": "Launcher access only. Privacy and cleanup state on this TV is owned by a separate tool, so this profile selects no cleanup groups. Quiet Home installation on this model is unverified.",
+  "groups": {}
+}

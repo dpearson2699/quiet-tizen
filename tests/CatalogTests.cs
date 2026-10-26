@@ -11,14 +11,15 @@ static class CatalogTests
     {
         var catalog = AppLibrary.Load(args[0]);
         if (catalog.Count < 2) throw new Exception("Catalog unexpectedly small");
-        Equal(-1, AppLibrary.Move(31, 0, "Up"), "top row returns to tabs");
-        Equal(15, AppLibrary.Move(31, 10, "Down"), "last row enters next page");
-        Equal(25, AppLibrary.Move(31, 30, "Up"), "partial page returns to matching previous column");
-        Equal(30, AppLibrary.Move(31, 29, "Down"), "last partial page clamps column");
-        Equal(11, AppLibrary.Move(12, 9, "Down"), "partial bottom row clamps column");
+        int C = AppLibrary.Columns, P = AppLibrary.PageSize;
+        Equal(-1, AppLibrary.Move(2 * P + 1, 0, "Up"), "top row returns to tabs");
+        Equal(P, AppLibrary.Move(2 * P + 1, P - C, "Down"), "last row enters next page");
+        Equal(2 * P - C, AppLibrary.Move(2 * P + 1, 2 * P, "Up"), "partial page returns to matching previous column");
+        Equal(2 * P, AppLibrary.Move(2 * P + 1, 2 * P - 1, "Down"), "last partial page clamps column");
+        Equal(2 * C + 1, AppLibrary.Move(2 * C + 2, 2 * C - 1, "Down"), "partial bottom row clamps column");
         Equal(11, AppLibrary.Move(12, 11, "Right"), "last item remains selected");
         Equal(-1, AppLibrary.Move(0, 0, "Down"), "empty catalog");
-        for (int count = 1; count < 48; count++)
+        for (int count = 1; count < 3 * P; count++)
             for (int item = 0; item < count; item++)
                 foreach (var key in new[] {"Left", "Right", "Up", "Down"})
                 {

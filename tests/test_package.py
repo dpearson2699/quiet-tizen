@@ -28,6 +28,19 @@ class PackageTests(unittest.TestCase):
         for essential in ("com.samsung.tv.bixby-promotion", "org.tizen.menu", "com.samsung.tv.quicklaunch"):
             self.assertNotIn(essential, ids)
 
+    def test_s95c_profile_selects_no_cleanup(self):
+        default = json.loads((ROOT / "profiles/un75u8000ffxza-1300.9.json").read_text())
+        for group in default["groups"]:
+            result = subprocess.run([
+                sys.executable, str(ROOT / "tools/plan_cleanup.py"),
+                "--profile", str(ROOT / "profiles/qn55s95cafxza-2220.4.json"),
+                "--snapshot", "unused.db", "--groups", group,
+                "--output", str(ROOT / ".local/never-created-s95c-plan"),
+            ], capture_output=True, text=True)
+            self.assertNotEqual(result.returncode, 0, group)
+            self.assertIn(f"Unknown group: {group}", result.stderr)
+        self.assertFalse((ROOT / ".local/never-created-s95c-plan").exists())
+
     def test_shell_syntax(self):
         for path in (ROOT / "recipes").glob("*.sh"):
             subprocess.run(["sh", "-n", str(path)], check=True, capture_output=True)

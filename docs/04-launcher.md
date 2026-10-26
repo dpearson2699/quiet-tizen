@@ -12,17 +12,18 @@ All UI text here is English. See [attribution](../NOTICE.md).
 ## Obtain matching private framework references
 
 Build against the TV's own compatible `Tizen.NUI.dll`,
-`Tizen.Applications.Common.dll`, `Tizen.System.dll` and `Tizen.dll`.
+`Tizen.Applications.Common.dll`, `Tizen.System.dll`, `Tizen.dll` and
+`Tizen.TV.DownloadableApplications.dll`.
 The shipped project files use `Private=false`, so those references are not
 copied into the app package.
 
 Find the paths on the target:
 
 ```sh
-tv exec --command 'find /usr/share/dotnet.tizen -name Tizen.NUI.dll -o -name Tizen.Applications.Common.dll -o -name Tizen.System.dll -o -name Tizen.dll'
+tv exec --command 'find /usr/share/dotnet.tizen -name Tizen.NUI.dll -o -name Tizen.Applications.Common.dll -o -name Tizen.System.dll -o -name Tizen.dll -o -name Tizen.TV.DownloadableApplications.dll'
 ```
 
-Inspect the results and pull the four matching runtime assemblies individually
+Inspect the results and pull the five matching runtime assemblies individually
 with `tv pull REMOTE_PATH .local/tv-framework/NAME.dll`. Do not use a random
 desktop/mobile SDK version just because it has a file with the same name.
 Do not commit the resulting assemblies.
@@ -37,9 +38,12 @@ assembles `.local/package/`. Public source cards are neutral text placeholders;
 
 ## Adapt inputs and apps
 
-The original UI uses HDMI 2 as the wide PlayStation 5 card, HDMI 3 as the
-Switch card, and HDMI 1 as the third card. Source IDs 14, 15 and 13 were observed
-on the tested TV. They are example wiring, not auto-discovery.
+Input cards come from the TV's source list (`get_source_list()` in
+`libsource-api.so`), one card per external input. A card's label is the name
+set in Samsung's Edit Source, then the name the device reports, then "HDMI N".
+Recognized PlayStation and Nintendo Switch names get the bundled illustration;
+otherwise a specific Samsung device icon is used, and a bare port gets the
+generic HDMI card. `launcher/src/Sources.cs` holds these rules.
 
 Upload and run Probe to inspect sources and the current main-operation handler:
 
@@ -48,10 +52,26 @@ tv push .local/build/Probe/Probe.dll Probe.dll
 tv exec --command '/usr/bin/dotnet /home/owner/share/tmp/sdk_tools/quiet-tizen/Probe.dll'
 ```
 
-Edit labels, source actions, `RefreshSource`, `SourceIndex` and the default
-`lastSource` in `launcher/src/Home.cs` to match the actual devices. The library
-is read from `apps.json`; verify all app IDs against the TV. See
-[app configuration](06-artwork.md). Rebuild after source changes.
+The app library is the TV's installed store apps plus Samsung's preinstalled
+media apps, read at launch through the application manager. `apps.json` is the
+curated layer on top. Its entries come first in catalog order and supply
+publisher artwork (see [app configuration](06-artwork.md)). Installed apps
+without curated art use the square tile Samsung's own home draws, read from
+its app service; many package icons are only a placeholder. Catalog entries for
+apps that are not installed are hidden. If the query fails, the catalog alone
+is shown. `library_source` and `store_source` in `/tmp/quiet-home-state.txt`
+report which happened.
+
+Selecting an app opens it when Select is released. Holding Select opens its
+options: Open, Add to Home or Remove from Home, Move (on the Home dock) and
+Delete app when Samsung's app service marks it removable. Move works like
+Samsung's reorder: Left and Right slide the app, Select keeps the order and
+Back cancels. Apps draw like the app row in Samsung's home: 112 px squircle
+tiles 16 px apart, a centered dock and a 1.2x focus scale with the TV's own
+focus-stroke artwork. The dock holds up to ten apps; until it is edited it
+shows the first three, and the edited order is saved in the app's data directory as
+`dock.json`. Delete asks for confirmation, with Cancel focused, then uses
+Samsung's uninstall.
 
 ## Install without changing Home yet
 
@@ -81,6 +101,17 @@ original TV. Filesystem steps are not a single atomic transaction. If a step
 fails, inspect the saved state and use recovery; do not rerun by deleting
 the original backup. The snapshot and backup folder is
 `/opt/usr/share/quiet-tizen-backups/home-01`.
+
+To install a newer build over an existing Quiet Home, stage the new package
+and run the update recipe with the same snapshot name. It refuses unless the
+live assembly is the one that snapshot recorded, replaces only the assembly and
+`res/quiet-home`, and records the new hash so restoration still works. It does
+not change Home/startup.
+
+```sh
+tv push .local/package.tar.gz package.tar.gz
+tv exec --script recipes/update-launcher.sh --arg home-01
+```
 
 Verify visibly:
 
