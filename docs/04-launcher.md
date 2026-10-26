@@ -5,9 +5,45 @@ routing adjusted to make it act as the launcher. It does not replace the
 kernel or the whole Tizen shell. Samsung's settings, app framework and media
 stack remain available underneath.
 
-The design follows Free My TV: light background, wide feature card, two
-portrait cards, colorful tiles, rounded controls and a translucent dock.
-All UI text here is English. See [attribution](../NOTICE.md).
+Home leads with the app you were last in, shown live, with Resume as its one
+main action. Inputs and Settings are pills above it, and the dock of chosen
+apps runs along the bottom. Your Apps, Inputs and Quick Settings are pages of
+their own, each with a title and a Home, Apps, Inputs, Settings tab strip.
+Every page is flat black. The app tiles and quick settings cards adapt Free My
+TV. All UI text here is English. See [attribution](../NOTICE.md).
+
+## How Home works
+
+Home picks what to lead with from two values the TV keeps,
+`memory/appfw/current_fullscreen_appid` and
+`memory/appfw/previous_fullscreen_appid`. While Quiet Home is in front it is
+the current app, so the previous one is the app you came from. The TV viewer
+(`org.tizen.tv-viewer`) stands for the last input. Settings, Samsung's own
+screens and anything outside the app library leave the earlier choice in
+place. The choice is read again whenever Quiet Home comes back and is kept in
+memory only. `launcher/src/Recent.cs` holds these rules and
+`tests/RecentTests.cs` checks them.
+
+The preview is the app itself, live. Like Samsung's home, Quiet Home asks the
+virtual screen linker (`/usr/lib/libvirtualscreen-linker.so`) to scale the
+app's own window into the preview area beneath Quiet Home's window, and leaves
+that area of its own window transparent so the app shows through. Quiet Home
+never reads or stores the app's picture. The app is let go when another app
+comes to the front, when you leave Home and when Quiet Home closes. If the app
+is not running or any linker call fails, the preview shows the app's tile
+instead. An input always shows its card art. The linker is a private Samsung
+library observed on the tested build; inspect it before reuse.
+
+Resume, or Back on Home, returns to that app with the extra Samsung's home
+sends for a recent app (`Entry=recent`, never `SkipPIN`, so a locked app still
+asks for its PIN), or switches to that
+input. Until there is something to resume, Home says so and Back switches to
+the last input. Up from Resume reaches the pills and Down reaches the dock,
+where focus returns to the tile it last left. Back on any other page returns
+Home, and the Home button always lands on Resume.
+
+In `/tmp/quiet-home-state.txt`, `recent` names the choice, `preview` reports
+`live`, `still` or `none`, and each `vs` line records the linker's results.
 
 ## Obtain matching private framework references
 
@@ -38,8 +74,8 @@ assembles `.local/package/`. Public source cards are neutral text placeholders;
 
 ## Adapt inputs and apps
 
-Input cards come from the TV's source list (`get_source_list()` in
-`libsource-api.so`), one card per external input. A card's label is the name
+The Inputs page shows one card per external input in the TV's source list
+(`get_source_list()` in `libsource-api.so`). A card's label is the name
 set in Samsung's Edit Source, then the name the device reports, then "HDMI N".
 Recognized PlayStation and Nintendo Switch names get the bundled illustration;
 otherwise a specific Samsung device icon is used, and a bare port gets the
@@ -69,7 +105,7 @@ Samsung's reorder: the rest of the screen dims, the neighboring tiles part
 around the app and arrows flank it, Left and Right slide it one slot in 300 ms,
 Select keeps the order and Back cancels.
 Apps draw like the app row in Samsung's home: 112 px squircle
-tiles 16 px apart, a centered dock and a 1.2x focus scale with the TV's own
+tiles 16 px apart, a dock aligned with Home's left edge and a 1.2x focus scale with the TV's own
 focus-stroke artwork. The dock holds up to ten apps; until it is edited it
 shows the first three, and the edited order is saved in the app's data directory as
 `dock.json`. Delete asks for confirmation, with Cancel focused, then uses
@@ -118,6 +154,8 @@ tv exec --script recipes/update-launcher.sh --arg home-01
 Verify visibly:
 
 - All pages render; the D-pad, Select and Back behave correctly.
+- Home shows the recent app live, and Resume and Back return to it in full
+  screen.
 - HDMI cards switch the intended input, with picture and audio.
 - Volume/mute and applicable quick settings work.
 - Native Advanced and Network settings still open.
